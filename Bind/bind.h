@@ -14,8 +14,9 @@
 *   @return  greater than 0 on success
             -1 if invalid port number
             -2 if opening socket failed
-            -3 if binding socket failed
-            -4 if listening failed
+            -3 if setsockopt failed
+            -4 if binding socket failed
+            -5 if listening failed
 */
 int create_listen_socket(uint16_t port);
 #endif
