@@ -99,7 +99,7 @@ void FinishThreadInit(int numThreads);
 void FinishThreadInitFree();
 
 /**  @brief Function in which threads will process requests from clients
-*    @param arg: 
+*    @param arg:
 */
 void* Worker_Request(void* arg);
 
@@ -127,7 +127,6 @@ void sig_Interrupt(int signum) {
 }
 
 int main(int argc, char *argv[]) {
-
     // Setting up interrupt struct
     struct sigaction interrup_sign;
     memset(&interrup_sign, 0, sizeof(interrup_sign));
@@ -160,7 +159,6 @@ int main(int argc, char *argv[]) {
 
     uint16_t portNum = portCheck(argv[optind]); // Checking for valid port number
     int socketFD = create_listen_socket(portNum);
-
     // Exit if not valid
     if (socketFD < 0) {
         warnx("bind: %s", strerror(errno));
@@ -193,7 +191,7 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    
+
     // Creating the URI locks
     URILockInit(numThreads);
 
@@ -215,7 +213,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Processing Client
-    
+    printf("Starting Server\n");
     while (!ev_signQuit) { // if the signal for quitting not set
         int* clientFD = malloc(sizeof(int));
         *(clientFD) = accept(socketFD, NULL, NULL); // waiting for connections
@@ -371,7 +369,7 @@ void* Worker_Request(void* arg) {
         }
 
         clientFD = *((int*)getClient);
-        free(getClient); // freeing the memory for the client 
+        free(getClient); // freeing the memory for the client
 
         // need to set client to nonblocking
         fcntl(clientFD, F_SETFL, O_NONBLOCK);
@@ -408,7 +406,7 @@ void* Worker_Request(void* arg) {
                 http_methods_StatusPrint(clientFD, BAD_REQUEST_); // print status
                 close(clientFD);
                 continue;
-                
+
             }
 
             // Checking headerfields
