@@ -4,7 +4,6 @@
 * Houses all functions for Http methods processing
 *
 */
-
 #ifndef HTTP_METHODS_H
 #define HTTP_METHODS_H
 

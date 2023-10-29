@@ -1,7 +1,7 @@
 httpserver: httpserver.o bind.o httpmethod.o requestformat.o queue.o
 	clang -Wall -Werror -Wextra -pedantic -lpthread -o httpserver httpserver.o bind.o httpmethod.o requestformat.o queue.o
 
-httpserver.o: Http_Server/httpserver.c Http_Server/httpserver.h Bind/bind.h Http_methods/http_methods.h Request_format/request_format.h
+httpserver.o: Http_Server/httpserver.c Http_Server/httpserver.h Bind/bind.h Request_format/request_format.h
 	clang -Wall -Werror -Wextra -pedantic -c Http_Server/httpserver.c
 
 httpmethod.o: Http_methods/http_methods.c Http_methods/http_methods.h

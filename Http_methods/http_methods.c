@@ -2,7 +2,6 @@
 * Created by Fabert Charles
 *
 */
-
 /*Included Libraries*/
 #include "http_methods.h"
 #include "../Request_format/request_format.h"
