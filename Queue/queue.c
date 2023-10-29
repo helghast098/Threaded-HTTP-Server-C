@@ -177,11 +177,11 @@ bool queue_pop(queue_t *q, void **elem) {
     return true;
 }
 
-void condition_pop(queue_t* q) {
+void queue_condition_pop(queue_t* q) {
     pthread_cond_signal(&(q->popCond));
 }
 
-void condition_push(queue_t* q) {
+void queue_condition_push(queue_t* q) {
     pthread_cond_signal(&(q->pushCond));
 }
 

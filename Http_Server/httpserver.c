@@ -29,10 +29,11 @@
 #include <semaphore.h>
 
 // Included Custom Libraries
-#include "bind.h"
-#include "Request_format/request_format.h"
-#include "Http_methods/http_methods.h"
-#include "Queue/queue.h"
+#include "../Bind/bind.h"
+#include "../Http_methods/http_methods.h"
+#include "httpserver.h"
+#include "../Queue/queue.h"
+#include "../Request_format/request_format.h"
 
 /*Type Definitions*/
 // Struct for holding a single uri
@@ -74,28 +75,6 @@ int logFileFD = STDERR_FILENO; // default logFile Descriptor
 
 /*Function Declarations*/
 
-/** @brief Checks if port given is valid
-*   @param port:  Port num as 
-*   @return port as a uint16_t
-*/
-uint16_t portCheck(char *port);
-
-
-/** @brief Pieces the requestof client when the client is slow and determines if at the end of request
-*   @param buffer:  Where the request of the client is placed (string)
-*   @param bytesRead:  How many bytes read from read()
-*   @param requestLine: The data gotten from read(clientFD)
-*   @param currentReqPos: Current position in buffer
-*   @param endRequest: True if end request, false otherwise
-*   @param buffPosition:  Position in buffer
-*   @param prevR_1:  True if encounter first \r
-*   @param prevN_1:  True if after prevR_1 encounter \n
-*   @param prevR_2:  True if after prevN_1 encounter \r
-*   @return void
-*/
-void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *currentReqPos,
-    bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2);
-
 /** @brief Initializes URI_Locks
 *   @param numThread:  The number of thread available
 *   @return void
@@ -123,7 +102,22 @@ void FinishThreadInitFree();
 */
 void* Worker_Request(void* arg);
 
-/*Singal Interrupt*/
+/** @brief Checks if the optional arguments are valid
+*   @param l_flag:  True if l optional argument available
+*   @param t_flag:  True if t optional argument available
+*   @param argc: User input count
+*   @param argv:  User input values
+*   @param numThreads: Number of threads
+*   @param log_file:  Where the server log is held
+*   @return void
+*/
+void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[], int *numThreads, char * log_file);
+
+//Signal Interrupt
+/**  @brief Handles signal interrupt
+*    @param signum:  signal number
+*    @return void
+*/
 void sig_Interrupt(int signum) {
     printf("Start Signal Handling\n");
     if (signum == SIGTERM) {
@@ -134,102 +128,56 @@ void sig_Interrupt(int signum) {
 
 int main(int argc, char *argv[]) {
 
-    /* ==============setting up interrupt struct===================*/
+    // Setting up interrupt struct
     struct sigaction interrup_sign;
     memset(&interrup_sign, 0, sizeof(interrup_sign));
     interrup_sign.sa_handler = sig_Interrupt;
     sigaction(SIGTERM, &interrup_sign, NULL);
 
-    /* --------------------- Checking for Arguments -----------------------------------------------------*/
-    int char_get = 0; // Holds char value
+    // Checking for user arguments
     char log_file[1000]; // Holds log file file
 
-    /*Flags for optional arguments*/
+    //Flags for optional arguments
     bool l_flag = false;
     bool t_flag = false;
     int numThreads = 4; // default # of threads
+
     // If there are no arguments
     if (argc < 2) {
         warnx("Too few arguments:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
         exit(1);
     }
-    opterr = 0; // setting getopt print error to 0
 
-    /*-------------------CHECKING FOR OPTION ARGUMENTS-------------------------------------------------*/
-    while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
-        switch (char_get) {
-            /*Checking for number of threads*/
-        case 'l':
-            l_flag = true;
-            // If not string after
-            if (optarg != NULL) {
-                strcpy(log_file, optarg);// copies string into log_file
-            }
-            else {
-                warnx("invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
-                exit(1);
-            }
-            break;
+    // Checking optional arguments
+    OptionalArgumentChecker(&l_flag, &t_flag, argc, argv, &numThreads, log_file);
 
-            /*Checking for logfile*/
-        case 't':
-            t_flag = true;
-            if (optarg != NULL) {
-                // checking if valid numbers:
-                for (uint32_t i = 0; i < strlen(optarg); ++i) {
-                    if ((optarg[i] < '0') || (optarg[i] > '9')) {
-                        // need to exit program
-                        warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
-                        exit(1);
-                    }
-                }
-                numThreads = atoi(optarg);
-            }
-            else {
-                warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
-                exit(1);
-            }
-            break;
-
-            /*If some random option*/
-        case '?':
-            warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>");
-            exit(1);
-
-        case ':':
-            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>", optopt);
-            exit(1);
-        }
-    }
-    /*===================================================================================================*/
-
-    /*-------------------Getting port numbers---------------------------------------------------------*/
-    if (optind == argc) { // if Invalid
+    // Getting Port Number
+    // First Checking there is an actual number available
+    if (optind == argc) {
         warnx("No port given: ./httpserver [-t threads] [-l logfile] <port>");
         exit(1);
     }
-    /*====================================================================================================*/
 
-    /*---------------------GETING PORT NUMBER AND CHECKING IF VALID--------------------*/
-    uint16_t portNum = portCheck(argv[optind]); // Checking for valuid port number
+    uint16_t portNum = portCheck(argv[optind]); // Checking for valid port number
     int socketFD = create_listen_socket(portNum);
+
+    // Exit if not valid
     if (socketFD < 0) {
         warnx("bind: %s", strerror(errno));
         exit(1);
     }
-    /*=================================================================================*/
 
-    /*------------------------------Initializing queue for requests---------------------------------------*/
+    // Initializing queue for requests
     g_queueRequest = queue_new(numThreads); // creates a queue size of threads
-    /*====================================================================================================*/
 
-    /*---------------------Opening Logfile if found---------------------*/
+    // Opening log file if found
     if (l_flag) {
         // If the File Exists
         if (access(log_file, F_OK) == 0) { // Checking if file exists
             logFileFD = open(log_file, O_TRUNC | O_WRONLY); // getting logFileFD
-            if (logFileFD < 0) // File error
-            {
+
+            // File error
+            if (logFileFD < 0) {
                 warnx("logfile opener: %s", strerror(errno));
                 exit(1);
             }
@@ -237,36 +185,37 @@ int main(int argc, char *argv[]) {
         // If the file doesn't exitst
         else {
             logFileFD = open(log_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-            if (logFileFD < 0) // File error
-            {
+
+            // File error
+            if (logFileFD < 0) {
                 warnx("logfile opener: %s", strerror(errno));
                 exit(1);
             }
         }
     }
-    /*==================================================================*/
     
-    /*Creat the URI locks*/
-    URILockInit(numThreads); // creating URI locks
+    // Creating the URI locks
+    URILockInit(numThreads);
 
-    /* Creating the Struct to hold whether a thread finished after a SIGTERM*/
+    // Creating the Struct to hold whether a thread finished after a SIGTERM
     FinishThreadInit(numThreads);
 
-    // creating the threads
-
+    // Creating Threads
     pthread_t worker_threads[numThreads]; // create numThreads workers
 
-    // threads identifiers
+    // Thread identifiers
     int threadNumber[numThreads];
+
     for (int i = 0; i < numThreads; ++i) {
         threadNumber[i] = i;
     }
     for (int i = 0; i < numThreads; ++i) {
-        void* ThreadArg = &(threadNumber[i]);
+        void* ThreadArg = &(threadNumber[i]); // Giving each thread an identifier
         pthread_create(worker_threads + i, NULL, Worker_Request, ThreadArg);
     }
 
-    //---------Processing client--------------------------------------------------------------------
+    // Processing Client
+    
     while (!ev_s ign) { // if the signal for quitting not set
         int* clientFD = malloc(sizeof(int));
         *(clientFD) = accept(socketFD, NULL, NULL); // waiting for connections
@@ -274,40 +223,46 @@ int main(int argc, char *argv[]) {
         /*If accept produces an error*/
         if ((*clientFD) < 0) {
             free(clientFD); // need to free clientFD memory
+
             if (errno == EINTR) { // need to break free and end program
                 break;
             }
             else continue;  // Else try again
         }
-        /*============================*/
 
-        if (!queue_push(g_queueRequest, clientFD)) { // if clientFD not put in queue because sigterm
+        // if clientFD not put in queue because sigterm
+        if (!queue_push(g_queueRequest, clientFD)) {
             free(clientFD);
         }
      }
+
     // going for array of threads
     bool allThreadFinish = false;
 
-    /*Waits for all the threads to finish processing last requests*/
+    // Waits for all the threads to finish processing last requests
     printf("Handling closing threads here\n");
+
+    // Sending to command to queue to wake up threads
+    queue_condition_pop(g_queueRequest);
+    queue_condition_push(g_queueRequest);
     while (!allThreadFinish) {
         int numFin = 0;// Shows how many threads finished
         for (int i = 0; i < g_signalThreads->size; ++i) {
             if (g_signalThreads->finishThreads[i]) {
                 ++numFin; // Increment counter for finish
             }
-            else {
-                // Wakes up threads stuck in Queueing
-                usleep(100);
-                condition_pop(g_queueRequest); // Do condition Pop
-            }
         }
+
         // Checking numFin
         if (numFin == g_signalThreads->size) allThreadFinish = true; // If all threads finish set to notify
+        else usleep(100); // sleep for 100 microseconds
     }
+
+    // Joining threads
     for (int i = 0; i < numThreads; ++i) {
         pthread_join(worker_threads[i], NULL);
     }
+
     printf("End of Handling Requests\n");
 
     // Removing queue structs present
@@ -316,6 +271,7 @@ int main(int argc, char *argv[]) {
         queue_pop(g_queueRequest, &strhere);
         free(strhere);
     }
+
     queue_delete(&g_queueRequest);
     FreeUriLocks();
     FinishThreadInitFree();
@@ -325,12 +281,15 @@ int main(int argc, char *argv[]) {
 }
 
 uint16_t portCheck(char *port) {
+    // Checking values of char
     for (unsigned int i = 0; port[i] != '\0'; ++i) {
         if (port[i] < '0' || port[i] > '9') {
             warnx("invalid port number: %s", port);
             exit(1);
         }
     }
+
+    // Turning string to long
     uint16_t result = strtol(port, NULL, 10);
     return result;
 }
@@ -339,8 +298,11 @@ void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *curr
     bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2) {
     // Used to check if reached end of request
     int i, j;
+
     for (j = *buffPosition, i = *currentReqPos; j < bytesRead; ++j, ++i) {
         char c = buffer[j]; // Gets char from buffer
+
+        // If else checking if at the end of request
         if ((c == '\r') && !(*prevR_1) && !(*prevN_1) && !(*prevR_2)) {
             *prevR_1 = true; // set the first \r to true
         } else if ((c == '\n') && *prevR_1 && !(*prevN_1) && !(*prevR_2)) {
@@ -365,19 +327,15 @@ void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *curr
 }
 
 
-/*This the function in which the worker threads will lay*/
 void* Worker_Request(void* arg) {
-    /*----------------Initializing all variables to process requesut----------------------*/
     // Need to read from the client
     int threadNum = *((int*)arg); // getting thread number
-    long int bytesRead = 0;
+    long int bytesRead = 0; // Bytes read from read()
 
-    /* all variables needed*/
     char fileName[1000]; // Holds file name
     Methods Meth = NO_VALID;
-    //bool ValidReq = true; // Shows if valid request
 
-    /*Important HEADERS*/
+    // Important HEADERS
     long int Content_length = 0; // Content_length
     long int Request_ID = 0; // REquest ID
 
@@ -387,17 +345,15 @@ void* Worker_Request(void* arg) {
     bool p2 = false;
     bool p3 = false;
     bool clientQuit = false;
-    /*Buffers Current Position*/
+
+    // Buffers Current Position
     int currentReqPos = 0;
     long int currentPosBuff = 0; // current position of buffer
 
 
-    /*Buffers*/
+    //Buffers
     char requestLine[2048]; // Holds the request line
     char buffer[BUFF_SIZE + 1]; // Buffer size
-    /*=========================================================================================*/
-
-
 
     // get client descriptor from queue
     void* getClient = NULL;
@@ -413,6 +369,7 @@ void* Worker_Request(void* arg) {
         if (!queue_pop(g_queueRequest, &getClient)) { // gets the client
             break;
         }
+
         clientFD = *((int*)getClient);
         free(getClient); // freeing the memory for the client 
 
@@ -423,15 +380,13 @@ void* Worker_Request(void* arg) {
         while (!ev_s ign && !endRequest) {
             bytesRead = read(clientFD, buffer, BUFF_SIZE); // read the bytes
             if (bytesRead < 0) { // Checks for blocking
-                if (errno == EAGAIN) {
-                    continue;
-                }
+                if (errno == EAGAIN) continue;
             }
             else if (bytesRead == 0) { // Client Closed connection
                 clientQuit = true;
                 break;
             }
-            /*Process the read request*/
+            //Process the read request
             else {
                 buffer[bytesRead] = '\0';
                 appropPlacer(buffer, bytesRead, requestLine, &currentReqPos, &endRequest,
@@ -444,11 +399,10 @@ void* Worker_Request(void* arg) {
         }
 
         if (!clientQuit) { // if client Quit
-        /*---------------------Checking for Response ----------------------------------*/
+            // Checking for responses
             int reqSize = currentReqPos;
             currentReqPos = 0;
-            int result
-                = request_format_RequestChecker(requestLine, &currentReqPos, reqSize, fileName, &Meth);
+            int result = request_format_RequestChecker(requestLine, &currentReqPos, reqSize, fileName, &Meth);
             if (result == -1) {
                 // throw invalid request
                 statusPrint(clientFD, BAD_REQUEST_); // print status
@@ -456,16 +410,16 @@ void* Worker_Request(void* arg) {
                 continue;
                 
             }
-            /*=============================================================================*/
 
-            /*-------------------Checking the Header Fields---------------------------------*/
-            result
-                = request_format_HeaderFieldChecker(requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
+            // Checking headerfields
+            result = request_format_HeaderFieldChecker(requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
+
             if (result == -1) {
                 statusPrint(clientFD, BAD_REQUEST_);
                 close(clientFD);
                 continue;
             }
+
             // check if no valid Meth
             if (Meth == NO_VALID) {
                 // Throw proper error
@@ -473,33 +427,25 @@ void* Worker_Request(void* arg) {
                 close(clientFD);
                 continue;
             }
-            /*==============================================================================*/
 
-            /* Checking for file existence*/
+            // Checking for file existence
             int resultMeth = 0;
-            /* Need to check if file is directory name*/
-            //=============================================== PUT =================================================
-            if (Meth == PUT) {
+            // Need to check if file is directory name
+
+            // PUT
+            if (Meth == PUT)
                 resultMeth = PutReq(fileName, buffer, clientFD, &currentPosBuff,
                     &bytesRead, Content_length, Request_ID, logFileFD);
-
-            }
-            //================================================ GET =================================================
-            else if (Meth == GET) {
-                resultMeth = GetReq(fileName, clientFD, Request_ID, logFileFD);
-
-                //=============================================== HEAD =================================================
-            }
-            else {
-                resultMeth = HeadReq(fileName, clientFD, Request_ID, logFileFD);
-            }
+            // GET
+            else if (Meth == GET) resultMeth = GetReq(fileName, clientFD, Request_ID, logFileFD);
+            // HEAD
+            else resultMeth = HeadReq(fileName, clientFD, Request_ID, logFileFD);
         }
         /*Resetting all variables to original values*/
         close(clientFD);
     }
 
     g_signalThreads->finishThreads[threadNum] = true;
-    //condition_push(g_queueRequest); // Do the Condition Push
     return NULL;
 }
 
@@ -542,4 +488,53 @@ void FinishThreadInitFree() {
     free(g_signalThreads->finishThreads);// free bool array
     free(g_signalThreads);
     g_signalThreads = NULL;
+}
+
+void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[], int *numThreads, char * log_file) {
+    int char_get = 0; // Holds char value
+    while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
+        switch (char_get) {
+            /*Checking for number of threads*/
+        case 'l':
+            *l_flag = true;
+            // If not string after
+            if (optarg != NULL) {
+                strcpy(log_file, optarg);// copies string into log_file
+            }
+            else {
+                warnx("invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
+                exit(1);
+            }
+            break;
+
+            /*Checking for logfile*/
+        case 't':
+            *t_flag = true;
+            if (optarg != NULL) {
+                // checking if valid numbers:
+                for (uint32_t i = 0; i < strlen(optarg); ++i) {
+                    if ((optarg[i] < '0') || (optarg[i] > '9')) {
+                        // need to exit program
+                        warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
+                        exit(1);
+                    }
+                }
+                *numThreads = atoi(optarg);
+            }
+            else {
+                warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
+                exit(1);
+            }
+            break;
+
+            /*If some random option*/
+        case '?':
+            warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>");
+            exit(1);
+
+        case ':':
+            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>", optopt);
+            exit(1);
+        }
+    }
 }

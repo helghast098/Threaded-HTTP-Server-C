@@ -49,13 +49,13 @@ bool queue_pop(queue_t* q, void** elem);
 *   @param q:  Pointer to a queue
 *   @return void
 */
-void condition_push(queue_t* q);
+void queue_condition_push(queue_t* q);
 
 /** @brief Just alerts one thread waiting on pop condition
 *   @param q:  Pointer to a queue
 *   @return void
 */
-void condition_pop(queue_t* q);
+void queue_condition_pop(queue_t* q);
 
 /** @brief returns current size of queue
 *   @param q:  Pointer to a queue
