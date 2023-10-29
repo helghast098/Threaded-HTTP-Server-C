@@ -122,7 +122,6 @@ void sig_Interrupt(int signum) {
     printf("Start Signal Handling\n");
     if (signum == SIGTERM) {
         ev_signQuit = true; // set sign quit to true
-        condition_push(g_queueRequest); // Do the Condition Push
     }
 }
 
