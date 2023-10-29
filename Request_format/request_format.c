@@ -10,7 +10,7 @@
 #include "request_format.h"
 
 /*Function Definitions*/
-int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize, char* file, methods* method) {
+int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize, char* file, Methods* meth) {
     int i = 0; // index of buffer
     if (bufferSize < 10)
         return -1;
@@ -39,13 +39,13 @@ int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize,
     }
 
     if (strcmp("HEAD", method) == 0)
-        *method = HEAD; // HEAD
+        *meth = HEAD; // HEAD
     else if (strcmp("GET", method) == 0)
-        *method = GET; // GET
+        *meth = GET; // GET
     else if (strcmp("PUT", method) == 0)
-        *method = PUT; // PUT
+        *meth = PUT; // PUT
     else
-        *method = NO_VALID; //If no valid input
+        *meth = NO_VALID; //If no valid input
 
     // Checking for Valid URI
     if (buffer[*currentPos] != '/')
