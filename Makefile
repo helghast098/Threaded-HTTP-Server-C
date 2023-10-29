@@ -11,7 +11,7 @@ requestformat.o: Request_format/request_format.c Request_format/request_format.h
 	clang -Wall -Werror -Wextra -pedantic -c -o requestformat.o Request_format/request_format.c
 	
 bind.o: Bind/bind.c Bind/bind.h
-	clang -Wall -Werror -Wextra -pedantic -c Bind/bind.c
+	clang -Wall -Werror -Wextra -pedantic -c -o bind.o Bind/bind.c
 
 queue.o: Queue/queue.c Queue/queue.h
 	clang -Wall -Werror -Wextra -pedantic -c -o queue.o Queue/queue.c

@@ -37,20 +37,20 @@
 
 /*Type Definitions*/
 // Struct for holding a single uri
-typedef struct lock_file {
+typedef struct LockFile {
     int numThreads; // Number of threads that are present here
     char URI[100];
     int numReaders; // How many threads are reading the file
     sem_t numReadKey; // Key for readers to read file
     sem_t fileWrite; // semaphore for file write
-}lock_file;
+}LockFile;
 
 // Struct to hold the list of uris
-typedef struct URI_lock{
+typedef struct URILock{
     int size;
     sem_t changeList;
-    lock_file *files;
-}URI_lock;
+    LockFile *files;
+}URILock;
 
 // Struct to signal threads to finissh
 typedef struct signalThreads {
@@ -59,8 +59,9 @@ typedef struct signalThreads {
 }signalThreads;
 
 
+
 /*Global Vars*/
-URI_lock* g_uriLocks; // pointer to the uri locks
+URILock* _uriLocks; // pointer to the uri locks
 
 signalThreads* g_signalThreads; // pointer to signal threads
 
@@ -75,7 +76,7 @@ int logFileFD = STDERR_FILENO; // default logFile Descriptor
 
 /*Function Declarations*/
 
-/** @brief Initializes URI_Locks
+/** @brief Initializes URILocks
 *   @param numThread:  The number of thread available
 *   @return void
 */
@@ -450,10 +451,10 @@ void* Worker_Request(void* arg) {
 
 /*URI locks that helps with the reader and write problem*/
 void URILockInit(int numThreads) {
-    g_uriLocks = malloc(sizeof(URI_lock));// creating array of locks for number of threads
+    g_uriLocks = malloc(sizeof(URILock));// creating array of locks for number of threads
     g_uriLocks->size = numThreads;
     sem_init(&(g_uriLocks->changeList), 1, 1); // Initializing lock to check array
-    g_uriLocks->files = malloc(numThreads * sizeof(lock_file));
+    g_uriLocks->files = malloc(numThreads * sizeof(LockFile));
     for (int i = 0; i < numThreads; ++i) {
         (g_uriLocks->files)[i].URI[0] = '\0';
         (g_uriLocks->files)[i].numReaders = 0;
