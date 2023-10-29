@@ -31,5 +31,5 @@ uint16_t portCheck(char *port);
 */
 void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *currentReqPos,
     bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2);
-    
+
 #endif
