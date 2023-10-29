@@ -53,14 +53,14 @@ extern URILock* e_uriLocks; // pointer to the uri locks
             1 for thread to wait for head or get to finish from other thread, 
             2 for thread to wait for put command to finish from some thread
 */
-int URILock(char* URI, Methods method, int* indexFile);
+int URILockFunc(char* URI, Methods method, int* indexFile);
 
 /** @brief Releases the uri lock the file
 *   @param index:  index of file to be release
 *   @param method: Method of http request
 *   @return void
 */
-void URIRelease(int index, Methods method);
+void URIReleaseFunc(int index, Methods method);
 
 /** @brief prints to the log file of the server
 *   @param reqNum: The number given to client request
@@ -89,11 +89,11 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
 
     char messageHolder[bytesLeftToWrite]; // create empty buffer
 
-    /*Variables used for interrupts*/
+    // Variables used for interrupts
     int bytesWritten = 0; // used to check if write actually writes
     int bytesContinuation = 0; // If only a partial amount of bytes written
 
-    Copy buffer into messageHolder
+    // Copy buffer into messageHolder
     for (int i = 0; i < bytesLeftToWrite; ++i) {
         messageHolder[i] = buffer[i + *currentPosBuf];
     }
@@ -126,12 +126,12 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     *bytesRead = 0; // resetting bytes read
 
     // If no error and still more to read
-    if ( (bytesWritten >= 0) && (contentLength != 0) && (!sign_quit) )
+    if ( (bytesWritten >= 0) && (contentLength != 0) && (!ev_signQuit) )
     {
         while (contentLength > 0) {
-            if (sign_quit) break;// checks if quit signal activated
+            if (ev_signQuit) break;// checks if quit signal activated
 
-            while (sign_quit) {
+            while (ev_signQuit) {
                 *bytesRead = read(clientFD, buffer, BUFF_SIZE); // reading more for message
 
                 if (*bytesRead < 0) { // meaning that there is an error
@@ -148,7 +148,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
                 }
             }
             // if signquit but read no data
-            if (sign_quit && (*bytesRead <= 0)) break;
+            if (ev_signQuit && (*bytesRead <= 0)) break;
 
             // checking for a big read error
             if (BigReadError) break;
@@ -208,7 +208,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     // Lock the File
     int fileIndex;
     close(fd); // closing temp file
-    int lockResult = URILock(file, PUT, &fileIndex); // locking file
+    int lockResult = URILockFunc(file, PUT, &fileIndex); // locking file
 
     if (lockResult == 1)
         while(sem_wait(&(e_uriLocks->files[fileIndex].fileWrite)) < 0); // getting write lock
@@ -234,12 +234,12 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     if (!fileExist) {
         http_methods_StatusPrint(clientFD, CREATED_);
         LogFilePrint(reqNum, logFD, 201, file, "PUT"); // Printing to Log
-        URIRelease(fileIndex, PUT);
+        URIReleaseFunc(fileIndex, PUT);
     }
     else {
         http_methods_StatusPrint(clientFD, OK_);
         LogFilePrint(reqNum, logFD, 200, file, "PUT"); // Printing to Log
-        URIRelease(fileIndex, PUT);
+        URIReleaseFunc(fileIndex, PUT);
     }
 
     return 0;
@@ -255,7 +255,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
     
     // Acquire URI Lock for file
     int URILockIndex = 0;
-    int statusURILock = URILock(file, GET, &URILockIndex); // acquring URI lock
+    int statusURILock = URILockFunc(file, GET, &URILockIndex); // acquring URI lock
 
     // Write. So only waiting for write
     if (statusURILock == 2) {
@@ -277,7 +277,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
         /*Printing to log*/
         LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-        URIRelease(URILockIndex, GET);
+        URIReleaseFunc(URILockIndex, GET);
         return -1;
     }
 
@@ -300,7 +300,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
             /*Printing to log*/
             LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-            URIRelease(URILockIndex, GET);
+            URIReleaseFunc(URILockIndex, GET);
             return -1;
         }
 
@@ -313,7 +313,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
             /*Printing to log*/
             LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-            URIRelease(URILockIndex, GET);
+            URIReleaseFunc(URILockIndex, GET);
             return -1;
         }
     }
@@ -323,7 +323,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
         /*Printing to log*/
         LogFilePrint(reqNum, logFD, 404, file, "GET"); // Printing to Log
-        URIRelease(URILockIndex, GET);
+        URIReleaseFunc(URILockIndex, GET);
         return -1;
     }
 
@@ -342,7 +342,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
             close(fd); // close the file
             http_methods_StatusPrint(clientFD, ISE_);
             LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-            URIRelease(URILockIndex, GET);
+            URIReleaseFunc(URILockIndex, GET);
             return -1;
         }
 
@@ -371,7 +371,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
                 /*Printing to log*/
                 http_methods_StatusPrint(clientFD, ISE_);
                 LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-                URIRelease(URILockIndex, GET);
+                URIReleaseFunc(URILockIndex, GET);
                 return -1;
             }
         }
@@ -383,7 +383,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
                 close(fd); // close the file
                 http_methods_StatusPrint(clientFD, ISE_);
                 LogFilePrint(reqNum, logFD, 500, file, "GET"); // Printing to Log
-                URIRelease(URILockIndex, GET);
+                URIReleaseFunc(URILockIndex, GET);
                 return -1;
             }
             // Increment bytes
@@ -398,7 +398,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
     /*Printing to log*/
     LogFilePrint(reqNum, logFD, 200, file, "GET"); // Printing to Log
-    URIRelease(URILockIndex, GET);
+    URIReleaseFunc(URILockIndex, GET);
     return 0;
 }
 
@@ -411,7 +411,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
     
     // Acquiring URI lock
     int URILockIndex = 0;
-    int statusURILock = URILock(file, HEAD, &URILockIndex); // acquring URI lock
+    int statusURILock = URILockFunc(file, HEAD, &URILockIndex); // acquring URI lock
     if (statusURILock == 2) { // Write. So only waiting for write
         while (sem_wait(&(e_uriLocks->files[URILockIndex].numReadKey)) < 0); // getting lock to change counter
 
@@ -427,7 +427,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
         http_methods_StatusPrint(clientFD, ISE_);
         /*Printing to log*/
         LogFilePrint(reqNum, logFD, 500, file, "HEAD"); // Printing to Log
-        URIRelease(URILockIndex, HEAD);
+        URIReleaseFunc(URILockIndex, HEAD);
         return -1;
     }
 
@@ -449,7 +449,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
 
             /*Printing to log*/
             LogFilePrint(reqNum, logFD, 500, file, "HEAD"); // Printing to Log
-            URIRelease(URILockIndex, HEAD);
+            URIReleaseFunc(URILockIndex, HEAD);
             return -1;
         }
         fstat(fd, &fileStat);
@@ -459,7 +459,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
             close(fd);
             http_methods_StatusPrint(clientFD, ISE_);
             LogFilePrint(reqNum, logFD, 500, file, "HEAD"); // Printing to Log
-            URIRelease(URILockIndex, HEAD);
+            URIReleaseFunc(URILockIndex, HEAD);
             return -1;
         }
     }
@@ -467,7 +467,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
     else {
         http_methods_StatusPrint(clientFD, NOT_FOUND_);
         LogFilePrint(reqNum, logFD, 404, file, "HEAD"); // Printing to Log
-        URIRelease(URILockIndex, HEAD);
+        URIReleaseFunc(URILockIndex, HEAD);
         return -1;
     }
 
@@ -483,7 +483,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
             close(fd); // close the file
             http_methods_StatusPrint(clientFD, ISE_);
             LogFilePrint(reqNum, logFD, 500, file, "HEAD"); // Printing to Log
-            URIRelease(URILockIndex, HEAD);
+            URIReleaseFunc(URILockIndex, HEAD);
             return -1;
         }
         // Increment bytes
@@ -494,7 +494,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
     
     LogFilePrint(reqNum, logFD, 200, file, "HEAD"); // Printing to Log
     close(fd);
-    URIRelease(URILockIndex, HEAD);
+    URIReleaseFunc(URILockIndex, HEAD);
     return 0;
 }
 
@@ -705,7 +705,7 @@ int URILock(char *URI, Methods method, int *indexFile) {
 }
 
 
-void URIRelease(int index, Methods Meth) {
+void URIReleaseFunc(int index, Methods Meth) {
     if (Meth != PUT) { // If the Method was a HEAD or GET
         while (sem_wait(&(e_uriLocks->files[index].numReadKey)) < 0); // Getting lock to change number waitng on thread
         e_uriLocks->files[index].numReaders -= 1;
