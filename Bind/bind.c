@@ -26,14 +26,14 @@ int create_listen_socket(uint16_t port) {
 
     int on = 1;
 
-    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)0 {
         return -3;
     }
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htons(INADDR_ANY);
     addr.sin_port = htons(port);
 
-    if (bind(listenfd, (struct sockaddr *) &addr, sizeof(addr) < 0) {
+    if (bind(listenfd, (struct sockaddr *) &addr, sizeof(addr) < 0)) {
         return -4;
     }
 
