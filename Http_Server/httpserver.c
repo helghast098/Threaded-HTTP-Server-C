@@ -121,7 +121,7 @@ void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[
 void sig_Interrupt(int signum) {
     printf("Start Signal Handling\n");
     if (signum == SIGTERM) {
-        ev_s ign = true; // set sign quit to true
+        ev_signQuit = true; // set sign quit to true
         condition_push(g_queueRequest); // Do the Condition Push
     }
 }
