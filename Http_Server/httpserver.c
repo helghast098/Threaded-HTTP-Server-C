@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
 
     // Processing Client
     
-    while (!ev_s ign) { // if the signal for quitting not set
+    while (!ev_signQuit) { // if the signal for quitting not set
         int* clientFD = malloc(sizeof(int));
         *(clientFD) = accept(socketFD, NULL, NULL); // waiting for connections
 
@@ -357,7 +357,7 @@ void* Worker_Request(void* arg) {
     // get client descriptor from queue
     void* getClient = NULL;
     int clientFD;
-    while (!ev_s ign) { // Only exits if sign quit is set
+    while (!ev_signQuit) { // Only exits if sign quit is set
         clientQuit = false;
         currentReqPos = 0;
         currentPosBuff = 0;
@@ -376,7 +376,7 @@ void* Worker_Request(void* arg) {
         fcntl(clientFD, F_SETFL, O_NONBLOCK);
 
         /*Read the client for the request*/
-        while (!ev_s ign && !endRequest) {
+        while (!ev_signQuit && !endRequest) {
             bytesRead = read(clientFD, buffer, BUFF_SIZE); // read the bytes
             if (bytesRead < 0) { // Checks for blocking
                 if (errno == EAGAIN) continue;
@@ -392,7 +392,7 @@ void* Worker_Request(void* arg) {
                             &currentPosBuff, &p1, &p2, &p3);
             }
         }
-        if (ev_s ign) {
+        if (ev_signQuit) {
             close(clientFD);
             break;
         }
@@ -404,7 +404,7 @@ void* Worker_Request(void* arg) {
             int result = request_format_RequestChecker(requestLine, &currentReqPos, reqSize, fileName, &Meth);
             if (result == -1) {
                 // throw invalid request
-                statusPrint(clientFD, BAD_REQUEST_); // print status
+                http_methods_StatusPrint(clientFD, BAD_REQUEST_); // print status
                 close(clientFD);
                 continue;
                 
@@ -414,7 +414,7 @@ void* Worker_Request(void* arg) {
             result = request_format_HeaderFieldChecker(requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
 
             if (result == -1) {
-                statusPrint(clientFD, BAD_REQUEST_);
+                http_methods_StatusPrint(clientFD, BAD_REQUEST_);
                 close(clientFD);
                 continue;
             }
@@ -422,7 +422,7 @@ void* Worker_Request(void* arg) {
             // check if no valid Meth
             if (Meth == NO_VALID) {
                 // Throw proper error
-                statusPrint(clientFD, NOT_IMP_);
+                http_methods_StatusPrint(clientFD, NOT_IMP_);
                 close(clientFD);
                 continue;
             }
@@ -433,12 +433,12 @@ void* Worker_Request(void* arg) {
 
             // PUT
             if (Meth == PUT)
-                resultMeth = PutReq(fileName, buffer, clientFD, &currentPosBuff,
+                resultMeth = http_methods_PutReq(fileName, buffer, clientFD, &currentPosBuff,
                     &bytesRead, Content_length, Request_ID, logFileFD);
             // GET
-            else if (Meth == GET) resultMeth = GetReq(fileName, clientFD, Request_ID, logFileFD);
+            else if (Meth == GET) resultMeth = http_methods_GetReq(fileName, clientFD, Request_ID, logFileFD);
             // HEAD
-            else resultMeth = HeadReq(fileName, clientFD, Request_ID, logFileFD);
+            else resultMeth = http_methods_HeadReq(fileName, clientFD, Request_ID, logFileFD);
         }
         /*Resetting all variables to original values*/
         close(clientFD);
