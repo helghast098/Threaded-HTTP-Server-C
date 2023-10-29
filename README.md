@@ -1,4 +1,4 @@
-# Simple Multithreaded C Server by Fabert C.
+# Simple Multithreaded Server in C by Fabert C.
 ## Cloning Repository
 To clone the repository: `https://github.com/helghast098/Simple-C-Server.git`
 
