@@ -629,7 +629,7 @@ void http_methods_statusPrint(int clientFD, StatusC status) {
     }
 }
 
-int URILock(char *URI, Methods method, int *indexFile) {
+int URILockFunc(char *URI, Methods method, int *indexFile) {
     // need to lock semaphor
     int indexes_with_no_file[e_uriLocks->size];
     int index_stop_no_files = 0;
