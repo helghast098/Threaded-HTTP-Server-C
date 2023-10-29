@@ -4,8 +4,8 @@
 * Houses all functions for Http methods processing
 *
 */
-//#ifndef HTTP_METHODS_H
-//#define HTTP_METHODS_H
+#ifndef HTTP_METHODS_H
+#define HTTP_METHODS_H
 
 /*Libraries Included*/
 #include<stdbool.h>
@@ -61,4 +61,4 @@ int http_methods_HeadReq(char* file, int clientFD, long int ReqNum, int logFD);
 *   @return void
 */
 void http_methods_StatusPrint(int clientFD, StatusC status);
-//#endif
+#endif
