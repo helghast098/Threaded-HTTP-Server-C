@@ -1,0 +1,11 @@
+**How to run:**<br>
+To run httpserver.c you must first type make on the Linux terminal, this will create a file named httpserver that can be run with ./httpserver ` [-t threads] [-l logfile] <port number>`. Note, `<port number>` must be greater than 1024 and be an integer.
+If no optional arguments are provided, then the default value for threads is 4 and the logfile points to stdout.
+    
+    Example input to run httpserver: (No optional arguments)
+        ./httpserver 8000
+    What this command does is it sets up httpserver to listen on port 8000.
+
+    Example input to run httpserver: (Optional Arguments)
+        ./httpserver 8000 -t 5 -l logfile.txt 8000
+    Here 5 threads are initialized, the requests to the server are written into logfile.txt, and the server listens to port 8000.
