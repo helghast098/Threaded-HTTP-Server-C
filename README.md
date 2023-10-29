@@ -12,7 +12,7 @@ If no optional arguments are provided, then the default value for threads is 4 a
 
     Example input to run httpserver: (Optional Arguments)
         ./httpserver 8000 -t 5 -l logfile.txt 8000
-    Here 5 threads are initialized, the requests to the server are written into logfile.txt, and the server listens to port 8000.
+    Here 5 threads are initialized, the requests to the server are written into logfile.txt, and the server listens on port 8000.
 
     Example PUT input from client using curl given port is 8000
         curl -X PUT localhost:8000/name.txt --data-raw "Fabert Charles"
