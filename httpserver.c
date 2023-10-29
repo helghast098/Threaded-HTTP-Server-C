@@ -81,19 +81,46 @@ int logFileFD = STDERR_FILENO; // default logFile Descriptor
 uint16_t portCheck(char *port);
 
 
-/** @brief
+/** @brief Pieces the requestof client when the client is slow and determines if at the end of request
+*   @param buffer:  Where the request of the client is placed (string)
+*   @param bytesRead:  How many bytes read from read()
+*   @param requestLine: The data gotten from read(clientFD)
+*   @param currentReqPos: Current position in buffer
+*   @param endRequest: True if end request, false otherwise
+*   @param buffPosition:  Position in buffer
+*   @param prevR_1:  True if encounter first \r
+*   @param prevN_1:  True if after prevR_1 encounter \n
+*   @param prevR_2:  True if after prevN_1 encounter \r
+*   @return void
 */
 void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *currentReqPos,
     bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2);
 
-void URI_LOCK_INIT(int numThreads);
+/** @brief Initializes URI_Locks
+*   @param numThread:  The number of thread available
+*   @return void
+*/
+void URILockInit(int numThreads);
 
+/** @brief cleans up URILock initialized in URILockInit
+*   @return Void
+*/
 void FreeUriLocks();
 
-void FinThread(int numThreads);
+/**  @brief Initializes array which holds if thread is finished and ended
+*    @param numThread:  How many thread available to process requests
+*    @return void
+*/
+void FinishThreadInit(int numThreads);
 
-void FinThreadFree();
+/** @brief Cleans up array initialized in FinishedThreadInit
+*   @return void
+*/
+void FinishThreadInitFree();
 
+/**  @brief Function in which threads will process requests from clients
+*    @param arg: 
+*/
 void* Worker_Request(void* arg);
 
 /*Singal Interrupt*/
@@ -131,7 +158,6 @@ int main(int argc, char *argv[]) {
     /*-------------------CHECKING FOR OPTION ARGUMENTS-------------------------------------------------*/
     while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
         switch (char_get) {
-           
             /*Checking for number of threads*/
         case 'l':
             l_flag = true;
@@ -221,10 +247,10 @@ int main(int argc, char *argv[]) {
     /*==================================================================*/
     
     /*Creat the URI locks*/
-    URI_LOCK_INIT(numThreads); // creating URI locks
+    URILockInit(numThreads); // creating URI locks
 
     /* Creating the Struct to hold whether a thread finished after a SIGTERM*/
-    FinThread(numThreads);
+    FinishThreadInit(numThreads);
 
     // creating the threads
 
@@ -292,12 +318,11 @@ int main(int argc, char *argv[]) {
     }
     queue_delete(&g_queueRequest);
     FreeUriLocks();
-    FinThreadFree();
+    FinishThreadInitFree();
     fsync(logFileFD); //** Freeing memory for URI lock
     close(logFileFD); // Close log file
     return 0;
 }
-
 
 uint16_t portCheck(char *port) {
     for (unsigned int i = 0; port[i] != '\0'; ++i) {
@@ -310,11 +335,6 @@ uint16_t portCheck(char *port) {
     return result;
 }
 
-
-/*
-* Pieces the request line together when the client is slow
-*
-*/
 void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *currentReqPos,
     bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2) {
     // Used to check if reached end of request
@@ -484,7 +504,7 @@ void* Worker_Request(void* arg) {
 }
 
 /*URI locks that helps with the reader and write problem*/
-void URI_LOCK_INIT(int numThreads) {
+void URILockInit(int numThreads) {
     g_uriLocks = malloc(sizeof(URI_lock));// creating array of locks for number of threads
     g_uriLocks->size = numThreads;
     sem_init(&(g_uriLocks->changeList), 1, 1); // Initializing lock to check array
@@ -512,13 +532,13 @@ void FreeUriLocks() {
     g_uriLocks = NULL;
 }
 
-void FinThread(int numThreads) {
+void FinishThreadInit(int numThreads) {
     g_signalThreads = malloc(sizeof(signalThreads)); // malloc array for singal threads
     g_signalThreads->size = numThreads; // Holds How many threads present
     g_signalThreads->finishThreads = calloc(numThreads, sizeof(atomic_bool)); // Initializing boolean array
 }
 
-void FinThreadFree() {
+void FinishThreadInitFree() {
     free(g_signalThreads->finishThreads);// free bool array
     free(g_signalThreads);
     g_signalThreads = NULL;
