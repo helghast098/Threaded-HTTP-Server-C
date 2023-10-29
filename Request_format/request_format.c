@@ -100,7 +100,7 @@ int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize,
 }
 
 
-int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, methods* method) {
+int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method) {
     // Checks if there are no header
     if ((bufferSize - *currentPos) < 2) {
         *contLength = 0;
@@ -123,7 +123,7 @@ int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferS
     bool keyFound = true; // True if a key is found
     bool endChecker = false; // True when no more header fields
     bool requestID = false;  // True if request ID heaeder field present
-    *ReqNum = 0; // Just in case if request ID not found
+    *reqID = 0; // Just in case if request ID not found
 
     for (int j = 0, i = *currentPos; i < bufferSize; ++i, ++j) {
         char c = buffer[i]; // char of header fields
@@ -261,7 +261,7 @@ int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferS
 
                         // Storing value
                         if (contentLengthFound) *contLength = strtol(val, NULL, 10); // For Content_length
-                        else *ReqNum = strtol(val, NULL, 10); // For Request ID
+                        else *reqID = strtol(val, NULL, 10); // For Request ID
 
                         // Need to increment i and reset j
                         ++i;
