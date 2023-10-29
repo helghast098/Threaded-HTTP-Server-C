@@ -11,7 +11,7 @@
 /*Function Declarations*/
 /** @brief Parses port number and binds and listens on it
 *   @param port:  Port to bind
-*   @return fd > 0 on success
+*   @return  0 on success
             -1 if invalid port number
             -2 if opening socket failed
             -3 if binding socket failed
