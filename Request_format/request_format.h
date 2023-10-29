@@ -18,7 +18,7 @@
 typedef enum { HEAD, PUT, GET, NO_VALID } Methods;
 
 /*Function Declarations*/
-/** @brief Checks if the request from the client is calid
+/** @brief Checks if the request from the client is valid
 *   @param buffer: Holds the string of the request
 *   @param currentPos: Current position of buffer to start
 *   @param bufferSize: Size of buffer
