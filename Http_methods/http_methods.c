@@ -523,7 +523,7 @@ void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char* 
 }
 
 
-void http_methods_StatusPrint(int clientFD, StatusC status); {
+void http_methods_StatusPrint(int clientFD, StatusC status) {
     int bytesWritten = 0; // Bytes written by write()
     int bytesContinuation = 0; // Continuing bytes for write()
     switch (status) {
