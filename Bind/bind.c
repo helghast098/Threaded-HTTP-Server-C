@@ -26,7 +26,7 @@ int create_listen_socket(uint16_t port) {
 
     int on = 1;
 
-    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)0 {
+    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
         return -3;
     }
     addr.sin_family = AF_INET;
