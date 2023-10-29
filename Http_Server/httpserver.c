@@ -61,7 +61,7 @@ typedef struct signalThreads {
 
 
 /*Global Vars*/
-URILock* _uriLocks; // pointer to the uri locks
+URILock* e_uriLocks; // pointer to the uri locks
 
 signalThreads* g_signalThreads; // pointer to signal threads
 
@@ -451,31 +451,31 @@ void* Worker_Request(void* arg) {
 
 /*URI locks that helps with the reader and write problem*/
 void URILockInit(int numThreads) {
-    g_uriLocks = malloc(sizeof(URILock));// creating array of locks for number of threads
-    g_uriLocks->size = numThreads;
-    sem_init(&(g_uriLocks->changeList), 1, 1); // Initializing lock to check array
-    g_uriLocks->files = malloc(numThreads * sizeof(LockFile));
+    e_uriLocks = malloc(sizeof(URILock));// creating array of locks for number of threads
+    e_uriLocks->size = numThreads;
+    sem_init(&(e_uriLocks->changeList), 1, 1); // Initializing lock to check array
+    e_uriLocks->files = malloc(numThreads * sizeof(LockFile));
     for (int i = 0; i < numThreads; ++i) {
-        (g_uriLocks->files)[i].URI[0] = '\0';
-        (g_uriLocks->files)[i].numReaders = 0;
-        (g_uriLocks->files)[i].numThreads = 0; // settign waiting/working threads to zero.
-       sem_init(&((g_uriLocks->files)[i].fileWrite), 1, 1);
-       sem_init(&((g_uriLocks->files)[i].numReadKey), 1, 1);
+        (e_uriLocks->files)[i].URI[0] = '\0';
+        (e_uriLocks->files)[i].numReaders = 0;
+        (e_uriLocks->files)[i].numThreads = 0; // settign waiting/working threads to zero.
+       sem_init(&((e_uriLocks->files)[i].fileWrite), 1, 1);
+       sem_init(&((e_uriLocks->files)[i].numReadKey), 1, 1);
     }
 }
 
 void FreeUriLocks() {
-    int size = g_uriLocks->size;
+    int size = e_uriLocks->size;
     for (int i = 0; i < size; ++i) {
         // unitialize all semaphores used
-        sem_destroy(&((g_uriLocks->files)[i].fileWrite));
-        sem_destroy(&((g_uriLocks->files)[i].numReadKey));
+        sem_destroy(&((e_uriLocks->files)[i].fileWrite));
+        sem_destroy(&((e_uriLocks->files)[i].numReadKey));
     }
     // now free the memory
-    free(g_uriLocks->files);
-    sem_destroy(&(g_uriLocks->changeList));
-    free(g_uriLocks);
-    g_uriLocks = NULL;
+    free(e_uriLocks->files);
+    sem_destroy(&(e_uriLocks->changeList));
+    free(e_uriLocks);
+    e_uriLocks = NULL;
 }
 
 void FinishThreadInit(int numThreads) {
