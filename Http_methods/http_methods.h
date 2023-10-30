@@ -22,7 +22,7 @@ typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IM
 #define BUFF_SIZE 4096
 
 /*Function Declarations*/
-/** @brief Does the puth method for the client
+/** @brief Does the put request for the client
 *   @param file: The file the client wants to access
 *   @param buffer: Holds the client message to put to the file
 *   @param clientFD: The file descriptor for the client
@@ -36,7 +36,7 @@ typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IM
 int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* currentPosBuf,
     long int* bytesRead, long int contentLength, long int ReqNum, int logFD);
 
-/** @brief Does the get method for the client
+/** @brief Does the get request for the client
 *   @param file: The file the client wants to access
 *   @param clientFD: The file descriptor for the client
 *   @param ReqNum:  Number of request from client (used in log file of server)
@@ -45,7 +45,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
 */
 int http_methods_GetReq(char* file, int clientFD, long int ReqNum, int logFD);
 
-/** @brief Does the head method for the client
+/** @brief Does the head request for the client
 *   @param file: The file the client wants to access
 *   @param clientFD: The file descriptor for the client
 *   @param ReqNum:  Number of request from client (used in log file of server)
