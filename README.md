@@ -45,5 +45,5 @@ If no optional arguments are provided, then the default value for threads is 4 a
 
     Example PUT input from client using curl given port is 8000
         curl -X PUT localhost:8000/name.txt --data-raw "Fabert Charles"
-    Creates file name.txt with contents "Fabert Charles"
+    Creates file name.txt with content "Fabert Charles"
         
