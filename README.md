@@ -1,6 +1,9 @@
 # Simple Multithreaded Server in C by Fabert C.
 ## Cloning Repository
 To clone the repository: `https://github.com/helghast098/Simple-C-Server.git`
+## Repository Structure
+The repository has the following file structure:
+
 ```bash
 | README.md (This File)
 ├── 
@@ -20,7 +23,7 @@ To clone the repository: `https://github.com/helghast098/Simple-C-Server.git`
 │   │   ├── queue.c
 │   │   └── queue.h
 │   │
-│   ├── Request_format  # C files for parsing requests from client
+│   ├── Request_format  # C files for parsing requests from clients
 │   │   ├── request_format.c
 │   │   └── request_format.h
 │   │
