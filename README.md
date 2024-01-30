@@ -24,7 +24,7 @@ The repository has the following file structure:
 │   │   └── Request-Parser  # C files for parsing requests from clients
 │   │       └── request_parser.h
 │   │  
-│   ├── src # HSource files
+│   ├── src # Source files
 │   │   ├── Bind  # C files to create a socket the server listens to.
 │   │   │   ├── bind.c
 │   │   │   └── CMakeLists.txt
@@ -57,7 +57,7 @@ The repository has the following file structure:
 Create a directory named build in the main project directory.  On a terminal, navigate to build and type `cmake ..` then `make`.  This will create a directory named httpserver in build that contains an executable named httpserver.
 
 `Using Makefile:`
-Type ' make ' on a terminal that is open to this project.  This will create the server executable named httpserver.
+Type `make` on a terminal that is open to this project.  This will create the server executable named httpserver.
 
 **How to run:**<br>
 You can run the server with `./httpserver  [-t threads] [-l logfile] <port number>`. Note, `<port number>` must be greater than 1024 and be an integer.
