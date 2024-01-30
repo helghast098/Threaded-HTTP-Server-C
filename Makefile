@@ -1,20 +1,22 @@
+
+
 httpserver: httpserver.o bind.o httpmethod.o requestformat.o queue.o
 	clang -Wall -Werror -Wextra -pedantic -lpthread -o httpserver httpserver.o bind.o httpmethod.o requestformat.o queue.o
 
-httpserver.o: Http_Server/httpserver.c Http_methods/http_methods.h Http_Server/httpserver.h Bind/bind.h Request_format/request_format.h
-	clang -Wall -Werror -Wextra -pedantic -c Http_Server/httpserver.c
+httpserver.o: src/HTTP-Server/httpserver.c include/HTTP-Methods/http_methods.h include/HTTP-Server/httpserver.h include/Bind/bind.h include/Request-Parser/request_parser.h
+	clang -Wall -Werror -Wextra -pedantic -Iinclude -c src/HTTP-Server/httpserver.c
 
-httpmethod.o: Http_methods/http_methods.c Http_methods/http_methods.h
-	clang -Wall -Werror -Wextra -pedantic -c -o httpmethod.o Http_methods/http_methods.c
+httpmethod.o: src/HTTP-Methods/http_methods.c include/HTTP-Methods/http_methods.h
+	clang -Wall -Werror -Wextra -pedantic -Iinclude -c -o httpmethod.o src/HTTP-Methods/http_methods.c
 
-requestformat.o: Request_format/request_format.c Request_format/request_format.h
-	clang -Wall -Werror -Wextra -pedantic -c -o requestformat.o Request_format/request_format.c
-	
-bind.o: Bind/bind.c Bind/bind.h
-	clang -Wall -Werror -Wextra -pedantic -c -o bind.o Bind/bind.c
+requestformat.o: src/Request-Parser/request_parser.c include/Request-Parser/request_parser.h
+	clang -Wall -Werror -Wextra -pedantic -Iinclude  -c -o requestformat.o src/Request-Parser/request_parser.c
 
-queue.o: Queue/queue.c Queue/queue.h
-	clang -Wall -Werror -Wextra -pedantic -c -o queue.o Queue/queue.c
-	
+bind.o: src/Bind/bind.c include/Bind/bind.h
+	clang -Wall -Werror -Wextra -pedantic -Iinclude -c -o bind.o src/Bind/bind.c
+
+queue.o: src/Queue/queue.c include/Queue/queue.h
+	clang -Wall -Werror -Wextra -pedantic -c -Iinclude -o queue.o src/Queue/queue.c
+
 clean:
 	rm -f httpserver bind.o requestformat.o httpmethod.o httpserver.o queue.o

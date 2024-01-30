@@ -1,0 +1,6 @@
+set(HEADER_LISTS "${HTTPServerP_SOURCE_DIR}/include/HTTP-Server/httpserver.h")
+add_executable(httpserver httpserver.c ${HEADER_LISTS})
+set_target_properties(httpserver PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/httpserver)
+target_include_directories(httpserver PRIVATE ${HTTPServerP_SOURCE_DIR}/include)
+find_package(Threads REQUIRED)
+target_link_libraries(httpserver PRIVATE Threads::Threads)
