@@ -54,7 +54,7 @@ The repository has the following file structure:
 ```
 **How to build:**<br>
 `Using cmake:`
-Create a directory named build in the main project directory.  On a terminal, navigate to build and type `cmake ..` then `make`.  This will create a directory named httpserver that contains an executable named httpserver.
+Create a directory named build in the main project directory.  On a terminal, navigate to build and type `cmake ..` then `make`.  This will create a directory named httpserver in build that contains an executable named httpserver.
 
 `Using Makefile:`
 Type ' make ' on a terminal that is open to this project.  This will create the server executable named httpserver.
