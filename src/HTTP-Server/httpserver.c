@@ -391,10 +391,12 @@ void* Worker_Request(void* arg) {
                             &currentPosBuff, &p1, &p2, &p3);
             }
         }
+
         if (ev_signQuit) {
             close(clientFD);
             break;
         }
+
 
         if (!clientQuit) { // if client Quit
             // Checking for responses
@@ -410,8 +412,7 @@ void* Worker_Request(void* arg) {
             }
 
             // Checking headerfields
-            result = request_format_HeaderFieldChecker(requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
-
+            result = request_format_HeaderFieldChecker(clientFD, requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
             if (result == -1) {
                 http_methods_StatusPrint(clientFD, BAD_REQUEST_);
                 close(clientFD);
@@ -428,12 +429,13 @@ void* Worker_Request(void* arg) {
 
             // Checking for file existence
             int resultMeth = 0;
-            // Need to check if file is directory name
 
             // PUT
-            if (Meth == PUT)
+            if (Meth == PUT) {
                 resultMeth = http_methods_PutReq(fileName, buffer, clientFD, &currentPosBuff,
                     &bytesRead, Content_length, Request_ID, logFileFD);
+
+			}
             // GET
             else if (Meth == GET) resultMeth = http_methods_GetReq(fileName, clientFD, Request_ID, logFileFD);
             // HEAD

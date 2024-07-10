@@ -37,6 +37,6 @@ int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize,
 *   @param method: The type of request from client
 *   @return 0 on success, -1 on failure
 */
-int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
+int request_format_HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
 
 #endif

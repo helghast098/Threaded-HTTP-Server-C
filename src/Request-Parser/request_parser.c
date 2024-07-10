@@ -6,8 +6,23 @@
 
 /*Libraries Included*/
 #include <stdlib.h>
+ #include <unistd.h>
 #include <string.h>
 #include <Request-Parser/request_parser.h>
+
+
+typedef enum {
+	STATE_START,
+	STATE_FAILURE,
+	STATE_START_KEY,
+	STATE_KEY,
+	STATE_START_VAL,
+	STATE_VAL,
+	STATE_1_R,
+	STATE_1_N,
+	STATE_2_R
+} Header_State;
+
 
 /*Function Definitions*/
 int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize, char* file, Methods* meth) {
@@ -99,207 +114,180 @@ int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize,
     }
 }
 
+int request_format_HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method) {
+	Header_State currentState = STATE_START;
 
-int request_format_HeaderFieldChecker(char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method) {
-    // Checks if there are no header
-    if ((bufferSize - *currentPos) < 2) {
-        *contLength = 0;
-        return -1;
-    }
+	char key[1000];
+	int key_indx = 0;
 
-    // Checking if beginning end with \r and \n
-    if (buffer[*currentPos] == '\r' && buffer[*currentPos + 1] == '\n') {
-        // add check if method is put
-        *contLength = 0;
-        if (*method == PUT)
-            return -1;
-        return 0;
-    }
+	char val[1000];
+	int val_indx = 0;
 
-    char key[1000]; // Key of Header Field
-    char val[1000]; // Value of Header Field
-    bool contentLengthFound = false; // true if content length found
-    bool contentForPut = false; // Only for put commands.  True if client wants to insert something
-    bool keyFound = true; // True if a key is found
-    bool endChecker = false; // True when no more header fields
-    bool requestID = false;  // True if request ID heaeder field present
-    *reqID = 0; // Just in case if request ID not found
+	bool content_length_found = false;
 
-    for (int j = 0, i = *currentPos; i < bufferSize; ++i, ++j) {
-        char c = buffer[i]; // char of header fields
+	while (*currentPos != bufferSize)
+	{
+		switch (currentState)
+		{
+			case STATE_START:
+				if (buffer[*currentPos] == '\r')
+				{
+					*currentPos += 1;
+					currentState = STATE_2_R;
+				}
+				else if (buffer[*currentPos] == '\n')
+				{
+					return -1;
+				}
+				else
+				{
+					currentState = STATE_START_KEY;
+				}
+				break;
 
-        // Checking if end of header fields
-        if (endChecker) {
-            // If c = '\r'
-            if (c == '\r') {
-                if ((bufferSize - i + 1) > 1) {
-                    if (buffer[i + 1] == '\n') {
-                        // Set the appropriate current Pos
-                        *currentPos = i + 2;
+			case STATE_START_KEY:
+				// remove all white spaces
+				if (buffer[*currentPos] == ' ')
+				{
+					while (*currentPos != bufferSize && buffer[*currentPos] == ' ')
+					{
+						*currentPos += 1;
+					}
+				}
+				else if (buffer[*currentPos] == '\r' || buffer[*currentPos] == '\n' || buffer[*currentPos] == ':')
+				{
+					return -1;
+				}
+				else
+				{
+					currentState = STATE_KEY;
+				}
+				break;
 
-                        // Checks if there is content length for put
-                        if ((!contentForPut) && (*method == PUT)) {
-                            *contLength = 0;
-                            return -1;
-                        }
-                        return 0;
+			case STATE_KEY:
+				if (buffer[*currentPos] == ':')
+				{
+					key[key_indx] = '\0';
+					*currentPos += 1;
+					currentState = STATE_START_VAL;
+				}
+				else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\r' || buffer[*currentPos] == '\n')
+				{
+					return -1;
+				}
+				else
+				{
+					key[key_indx] = buffer[*currentPos];
+					key_indx += 1;
+					*currentPos += 1;
+				}
+				break;
+
+			case STATE_START_VAL:
+				// remove all white spaces
+				if (buffer[*currentPos] == ' ')
+				{
+					while (*currentPos != bufferSize && buffer[*currentPos] == ' ')
+					{
+						*currentPos += 1;
+					}
+				}
+				else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\r' || buffer[*currentPos] == '\n')
+				{
+					return -1;
+				}
+				else
+				{
+					currentState = STATE_VAL;
+				}
+				break;
+
+			case STATE_VAL:
+				if (buffer[*currentPos] == '\r')
+				{
+					val[val_indx] = '\0';
+					*currentPos += 1;
+					currentState = STATE_1_R;
+				}
+				else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\n')
+				{
+					return -1;
+				}
+				else {
+					val[val_indx] = buffer[*currentPos];
+					*currentPos += 1;
+					val_indx += 1;
+				}
+				break;
+
+			case STATE_1_R:
+				if (buffer[*currentPos] != '\n')
+				{
+					return -1;
+				}
+
+				currentState = STATE_1_N;
+				*currentPos += 1;
+				break;
+
+			case STATE_1_N:
+
+				// Checking for key
+				if (key_indx != 0)
+				{
+					// Content-Length
+					if (strcmp(key, "Content-Length") == 0)
+					{
+						*contLength = strtol(val, NULL, 10);
+						content_length_found = true;
                     }
-                    else {
-                        endChecker = false;
-                        keyFound = true;
+                    // Request-Id
+                    else if (strcmp(key, "Request-Id") == 0)
+					{
+                        *reqID = strtol(val, NULL, 10);
                     }
-                }
-            }
-            // No end char found so move to next key
-            else {
-                endChecker = false;
-                keyFound = true;
-            }
-        }
+					// Expect
+					else if (strcmp(key, "Expect") == 0)
+					{
+						// Write now accepting any size file.
+						if (strcmp(val, "100-continue") == 0)
+						{
+							if (write(clientFD, "HTTP/1.1 100 Continue\r\n\r\n", 29) < 0)
+							{
+								return -1;
+							}
+						}
+					}
+				}
 
-        // Checking if Key Found
-        if (keyFound) {
-            // Checking for white space in front of key
-            if (j == 0 && c == ' ') {
-                // remove white spaces unitl reaching key
-                for (; i < bufferSize; ++i) {
-                    c = buffer[i];
-                    if (c != ' ')
-                        break; //If no white space encountered
-                }
-                if (i == bufferSize)
-                    return -1;
-            }
+				if (buffer[*currentPos] != '\r')
+				{
+					currentState = STATE_START_KEY;
+				}
+				else
+				{
+					currentState = STATE_2_R;
+					*currentPos += 1;
+				}
 
-            // If white space is present
-            if (c == ' ') {
-                *contLength = 0;
-                return -1;
-            }
-            // Transition to value
-            else if (c == ':') {
-                // Checks if there is actually a key
-                if (j == 0) {
-                    *currentPos = i;
-                    *contLength = 0;
-                    return -1;
-                }
+				key_indx = 0;
+				val_indx = 0;
+				break;
 
-                keyFound = false; // Turn off finding key
-                key[j] = '\0';
+			case STATE_2_R:
+				if (buffer[*currentPos] != '\n')
+				{
+					return -1;
+				}
+				*currentPos += 1;
 
-                // If there is more than 1 char to handle
-                if ((bufferSize - i + 1) > 1) {
-                    // Checks for space after ":"
-                    if (buffer[i + 1] != ' ') {
-                        *currentPos = i + 1;
-                        *contLength = 0;
-                        return -1;
-                    }
-                    else {
-                        // IMPORTANT HEADER FIELDS
-                        // Checking if content_length Found
-                        if (strcmp(key, "Content-Length") == 0) {
-                            contentLengthFound = true;
-                            contentForPut = true;
-                        }
-                        // Checking for request Id
-                        else if (strcmp(key, "Request-Id") == 0) {
-                            requestID = true; // foudn request ID
+				if (*method == PUT && !content_length_found)
+				{
+					return -1;
+				}
+				return 0;
+		}
+	}
 
-                        }
-                        // Now checking for value
-                        ++i;
-                        j = -1; // reseting j to 0
-                        continue; // go to next loop iteration
-                    }
-                }
-                else {
-                    *currentPos = i;
-                    *contLength = 0;
-                    return -1;
-                }
-            }
-            else {
-                key[j] = c;
-            }
-        }
-        // Finding Value of Key
-        else {
-            // Checks if after space there is the end headers delimiters
-            // Only Find Values for Content length or Request ID
-            if (contentLengthFound || requestID) {
-                // remove white spaces from front of number
-                if (j == 0 && c == ' ') {
-                    // remove white spaces unitl reaching key
-                    for (; i < bufferSize; ++i) {
-                        c = buffer[i];
-
-                        if (c != ' ')
-                            break; //If no white space encountered
-                    }
-
-                    if (i == bufferSize)
-                        return -1;
-                }
-                // If at the end of value
-                if (c == '\r') {
-                    val[j] = '\0';
-                    // Check for empty string
-                    if (strlen(val) == 0) {
-                        *contLength = 0;
-                        return -1;
-                    }
-
-                    // Checking if the next value is \n
-                    if ((bufferSize - i + 1) > 1) {
-                        if (buffer[i + 1] != '\n') {
-                            *currentPos = i + 1;
-                            *contLength = 0;
-                            return -1;
-                        }
-
-                        // Storing value
-                        if (contentLengthFound) *contLength = strtol(val, NULL, 10); // For Content_length
-                        else *reqID = strtol(val, NULL, 10); // For Request ID
-
-                        // Need to increment i and reset j
-                        ++i;
-                        j = -1;
-                        endChecker = true;
-                        requestID = false; // turn off requestID
-                        contentLengthFound = false; // turn of contentHE
-                        continue;
-                    }
-                }
-                // If the char is not a integer
-                if ((c < '0') || (c > '9')) {
-                    *currentPos = i;
-                    *contLength = 0;
-                    return -1;
-                }
-
-                val[j] = c;
-            }
-            // Checking for other headers
-            else {
-                // End of value
-                if (c == '\r') {
-                    // NEED TO START END OF HEADER CHECKER AND ALSO CHECK IS NEXT CHAR IS \N
-                    if ((bufferSize - i + 1) > 1) {
-                        if (buffer[i + 1] == '\n') // found delimiter of key and value
-                        {
-                            ++i;
-                            j = -1;
-                            endChecker = true;
-                        }
-                        // Need to char end checker of header
-                    }
-                }
-            }
-        }
-    }
-    *currentPos = bufferSize;
-    *contLength = 0;
-    return -1;
+	return -1;
 }

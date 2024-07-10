@@ -23,6 +23,8 @@
 #include <stdio.h>
 #include <semaphore.h>
 
+#define MAX_PUT_MESSAGE_BUFF 10000
+
 /*Type Definitions*/
 // struct for holding a single uri
 typedef struct LockFile {
@@ -79,134 +81,55 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     int fd = mkstemp(tempFile);
 
     // checking content_length
-    long int bytesLeftToWrite = *bytesRead - *currentPosBuf;
+    long int bytesLeftToWrite = contentLength - (*bytesRead - *currentPosBuf);
 
-    // checks if the the buffer has more than content-length
-    if (bytesLeftToWrite > contentLength) {
-        bytesLeftToWrite = contentLength;
-    }
 
-    char messageHolder[bytesLeftToWrite]; // create empty buffer
-
-    // Variables used for interrupts
+	// Variables used for interrupts
     int bytesWritten = 0; // used to check if write actually writes
-    int bytesContinuation = 0; // If only a partial amount of bytes written
+
+	long int messageLen = 0;
+	char messageHolder[MAX_PUT_MESSAGE_BUFF];
+
 
     // Copy buffer into messageHolder
-    for (int i = 0; i < bytesLeftToWrite; ++i) {
+    for (int i = 0; i < *bytesRead; ++i) {
         messageHolder[i] = buffer[i + *currentPosBuf];
     }
 
-    // Checking if there's something to write
-    if (bytesLeftToWrite > 0) {
-        // now writing to file
-        do {
-            bytesWritten = write(fd, messageHolder, bytesLeftToWrite); // write to file
 
-            // CHECKING IF ERROR AND NOT INTERRUPTED
-            if ((bytesWritten < 0) && (errno != EINTR)) {
-                break;
-            }
+	messageLen = *bytesRead - *currentPosBuf;
 
-            // Increment bytes
-            if (bytesWritten > 0) {
-                bytesContinuation += bytesWritten;
-            }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < bytesLeftToWrite) && (bytesContinuation > 0)));
+	if (bytesLeftToWrite == 0) {
 
-        contentLength -= bytesContinuation; // adjust the content_length size
-        *currentPosBuf += bytesContinuation; // ajdust buffer position
-        bytesContinuation = 0; // resetting bytes con
+		bytesWritten = write(fd, messageHolder, messageLen);
+	}
+	else {
+		while (bytesLeftToWrite != 0 && !ev_signQuit) {
+			if (messageLen == MAX_PUT_MESSAGE_BUFF) {
+				bytesWritten = write(fd, messageHolder, messageLen);
+				if (bytesWritten < 0) break;
+				messageLen = 0;
+			}
+			else {
+				*bytesRead = read(clientFD, messageHolder + messageLen, MAX_PUT_MESSAGE_BUFF - messageLen);
+				if (*bytesRead <= 0) break;
+				bytesLeftToWrite -= *bytesRead;
+				messageLen += *bytesRead;
+			}
+		}
+		if (bytesLeftToWrite >= 0 && *bytesRead >= 0 && !ev_signQuit) {
+			bytesWritten = write(fd, messageHolder, messageLen);
+		}
+		else {
+			http_methods_StatusPrint(clientFD, ISE_);
+			LogFilePrint(reqNum, logFD, 500, file, "PUT"); // Printing to Log
+		}
+	}
 
-    }
-
-    // checking if there is more to read or an sign quit
-    bool BigReadError = false; // If errno returns some other number than EAGAIN
-    *bytesRead = 0; // resetting bytes read
-
-    // If no error and still more to read
-    if ( (bytesWritten >= 0) && (contentLength != 0) && (!ev_signQuit) )
-    {
-        while (contentLength > 0) {
-            if (ev_signQuit) break;// checks if quit signal activated
-
-            while (ev_signQuit) {
-                *bytesRead = read(clientFD, buffer, BUFF_SIZE); // reading more for message
-
-                if (*bytesRead < 0) { // meaning that there is an error
-                    // if bytes still not available
-                    if (errno == EAGAIN) {
-                        continue;
-                    }
-                    else {
-                        BigReadError = true;
-                    }
-                }
-                else {
-                    break;
-                }
-            }
-            // if signquit but read no data
-            if (ev_signQuit && (*bytesRead <= 0)) break;
-
-            // checking for a big read error
-            if (BigReadError) break;
-
-            // Checking status of read
-            // client shutdown
-            if (*bytesRead == 0) break;
-
-            // if bytes read less than content length
-            // if content size > than bytes read
-            if (contentLength > *bytesRead) {
-                do {
-                    bytesWritten = write(fd, buffer, *bytesRead); // write to file
-
-                    // CHECKING IF ERROR AND NOT INTERRUPTED
-                    if ((bytesWritten < 0) && (errno != EINTR)) {
-                        break;
-                    }
-
-                    // Increment bytes
-                    if (bytesWritten > 0) {
-                        bytesContinuation += bytesWritten;
-                    }
-                } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < *bytesRead) && (bytesContinuation > 0)));
-
-                contentLength -= bytesContinuation; // removing bytesContinuation from cont length
-
-                if (bytesWritten < 0) break; // IF a write error occured
-            }
-            // bytes read > content length
-            else {
-                do {
-                    bytesWritten = write(fd, buffer, contentLength); // write to file
-
-                    // CHECKING IF ERROR AND NOT INTERRUPTED
-                    if ((bytesWritten < 0) && (errno != EINTR)) {
-                        break;
-                    }
-
-                    // Increment bytes
-                    if (bytesWritten > 0) {
-                        bytesContinuation += bytesWritten;
-                    }
-                } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < contentLength) && (bytesContinuation > 0)));
-
-                *currentPosBuf = bytesContinuation; // add content length to buffer
-                contentLength -= bytesContinuation; // set cont to size 0
-
-                if (bytesWritten < 0) break; // break if an error occurred
-            }
-
-            /*SIGNAL RESPONSE*/
-            bytesContinuation = 0; // resetting bytes con
-
-        }
-    }
     // Lock the File
     int fileIndex;
     close(fd); // closing temp file
+
     int lockResult = URILockFunc(file, PUT, &fileIndex); // locking file
 
     if (lockResult == 1)
@@ -223,7 +146,8 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     rename(tempFile, file);
 
     /*If I cannot process the full request because of some interruption*/
-    if (contentLength != 0) {
+	printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
+    if (bytesLeftToWrite != 0) {
         // need to clear file
         fd = open(file, O_TRUNC | O_WRONLY);
         close(fd);
@@ -529,7 +453,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
     switch (status) {
     case OK_:
         do {
-           bytesWritten = write(clientFD, "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nOK\r\n", 42);
+           bytesWritten = write(clientFD, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nOK\r\n", 42);
            // Increment bytes
            if (bytesWritten > 0) {
                bytesContinuation += bytesWritten;
@@ -544,7 +468,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case CREATED_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 201 Created\r\nContent-Length: 8\r\n\r\nCreated\r\n", 52);
+            bytesWritten = write(clientFD, "HTTP/1.1 201 Created\r\nContent-Length: 9\r\n\r\nCreated\r\n", 52);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -558,7 +482,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case BAD_REQUEST_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 400 Bad Request\r\nContent-Length: 12\r\n\r\nBad Request\r\n", 61);
+            bytesWritten = write(clientFD, "HTTP/1.1 400 Bad Request\r\nContent-Length: 13\r\n\r\nBad Request\r\n", 61);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -572,7 +496,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case FORBIDDEN_:
         do {
-           bytesWritten = write(clientFD, "HTTP/1.1 403 Forbidden\r\nContent-Length: 10\r\n\r\nForbidden\r\n", 57);
+           bytesWritten = write(clientFD, "HTTP/1.1 403 Forbidden\r\nContent-Length: 11\r\n\r\nForbidden\r\n", 57);
            // Increment bytes
            if (bytesWritten > 0) {
                bytesContinuation += bytesWritten;
@@ -586,7 +510,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case NOT_IMP_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 501 Not Implemented\r\nContent-Length: 16\r\n\r\nNot Implemented\r\n", 69);
+            bytesWritten = write(clientFD, "HTTP/1.1 501 Not Implemented\r\nContent-Length: 17\r\n\r\nNot Implemented\r\n", 69);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -600,7 +524,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case NOT_FOUND_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 404 Not Found\r\nContent-Length: 10\r\n\r\nNot Found\r\n", 57);
+            bytesWritten = write(clientFD, "HTTP/1.1 404 Not Found\r\nContent-Length: 11\r\n\r\nNot Found\r\n", 57);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -614,7 +538,7 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
 
     case ISE_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 22\r\n\r\nInternal Server Error\r\n", 81);
+            bytesWritten = write(clientFD, "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 23\r\n\r\nInternal Server Error\r\n", 81);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
