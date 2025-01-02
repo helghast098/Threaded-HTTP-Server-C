@@ -144,7 +144,7 @@ int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *curren
     rename(tempFile, file);
 
     /*If I cannot process the full request because of some interruption*/
-    printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
+	printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
     if (bytesLeftToWrite != 0) {
         // need to clear file
         fd = open(file, O_TRUNC | O_WRONLY);
