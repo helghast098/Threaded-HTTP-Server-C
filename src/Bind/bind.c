@@ -1,8 +1,8 @@
 /**
-* Created By Fabert Charles
-*
-* Houses porting binding function definitions
-*/
+ * Created By Fabert Charles
+ *
+ * Houses porting binding function definitions
+ */
 
 /*Included Libraries*/
 #include <Bind/bind.h>
@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 /*Function Definitions*/
+
 int create_listen_socket(uint16_t port) {
     signal(SIGPIPE, SIG_IGN);
     if (port == 0) {

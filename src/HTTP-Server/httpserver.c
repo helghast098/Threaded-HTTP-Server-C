@@ -43,33 +43,32 @@ typedef struct LockFile {
     int numReaders; // How many threads are reading the file
     sem_t numReadKey; // Key for readers to read file
     sem_t fileWrite; // semaphore for file write
-}LockFile;
+} LockFile;
 
 // Struct to hold the list of uris
-typedef struct URILock{
+typedef struct URILock {
     int size;
     sem_t changeList;
     LockFile *files;
-}URILock;
+} URILock;
 
 // Struct to signal threads to finissh
 typedef struct signalThreads {
     int size;
-    atomic_bool* finishThreads; // Holds an array for finished threads
-}signalThreads;
-
-
+    atomic_bool *finishThreads; // Holds an array for finished threads
+} signalThreads;
 
 /*Global Vars*/
-URILock* e_uriLocks; // pointer to the uri locks
+URILock *e_uriLocks; // pointer to the uri locks
 
-signalThreads* g_signalThreads; // pointer to signal threads
+signalThreads *g_signalThreads; // pointer to signal threads
 
 //Flag for interrupt
-volatile atomic_bool ev_signQuit = false; // If terminate signal happens, quit. Also, atomic variable
+volatile atomic_bool ev_signQuit
+    = false; // If terminate signal happens, quit. Also, atomic variable
 
 // Queue for holding clientFD
-queue_t* g_queueRequest;
+queue_t *g_queueRequest;
 
 // Holds logfile FD
 int logFileFD = STDERR_FILENO; // default logFile Descriptor
@@ -101,7 +100,7 @@ void FinishThreadInitFree();
 /**  @brief Function in which threads will process requests from clients
 *    @param arg:
 */
-void* Worker_Request(void* arg);
+void *Worker_Request(void *arg);
 
 /** @brief Checks if the optional arguments are valid
 *   @param l_flag:  True if l optional argument available
@@ -112,7 +111,8 @@ void* Worker_Request(void* arg);
 *   @param log_file:  Where the server log is held
 *   @return void
 */
-void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[], int *numThreads, char * log_file);
+void OptionalArgumentChecker(
+    bool *l_flag, bool *t_flag, int argc, char *argv[], int *numThreads, char *log_file);
 
 //Signal Interrupt
 /**  @brief Handles signal interrupt
@@ -208,14 +208,14 @@ int main(int argc, char *argv[]) {
         threadNumber[i] = i;
     }
     for (int i = 0; i < numThreads; ++i) {
-        void* ThreadArg = &(threadNumber[i]); // Giving each thread an identifier
+        void *ThreadArg = &(threadNumber[i]); // Giving each thread an identifier
         pthread_create(worker_threads + i, NULL, Worker_Request, ThreadArg);
     }
 
     // Processing Client
     printf("Starting Server\n");
     while (!ev_signQuit) { // if the signal for quitting not set
-        int* clientFD = malloc(sizeof(int));
+        int *clientFD = malloc(sizeof(int));
         *(clientFD) = accept(socketFD, NULL, NULL); // waiting for connections
 
         /*If accept produces an error*/
@@ -224,15 +224,15 @@ int main(int argc, char *argv[]) {
 
             if (errno == EINTR) { // need to break free and end program
                 break;
-            }
-            else continue;  // Else try again
+            } else
+                continue; // Else try again
         }
 
         // if clientFD not put in queue because sigterm
         if (!queue_push(g_queueRequest, clientFD)) {
             free(clientFD);
         }
-     }
+    }
 
     // going for array of threads
     bool allThreadFinish = false;
@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
     queue_condition_pop(g_queueRequest);
     queue_condition_push(g_queueRequest);
     while (!allThreadFinish) {
-        int numFin = 0;// Shows how many threads finished
+        int numFin = 0; // Shows how many threads finished
         for (int i = 0; i < g_signalThreads->size; ++i) {
             if (g_signalThreads->finishThreads[i]) {
                 ++numFin; // Increment counter for finish
@@ -252,8 +252,10 @@ int main(int argc, char *argv[]) {
         }
 
         // Checking numFin
-        if (numFin == g_signalThreads->size) allThreadFinish = true; // If all threads finish set to notify
-        else usleep(100); // sleep for 100 microseconds
+        if (numFin == g_signalThreads->size)
+            allThreadFinish = true; // If all threads finish set to notify
+        else
+            usleep(100); // sleep for 100 microseconds
     }
 
     // Joining threads
@@ -265,7 +267,7 @@ int main(int argc, char *argv[]) {
 
     // Removing queue structs present
     while (queue_size(g_queueRequest) != 0) {
-        void* strhere;
+        void *strhere;
         queue_pop(g_queueRequest, &strhere);
         free(strhere);
     }
@@ -324,10 +326,9 @@ void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *curr
     *currentReqPos = i;
 }
 
-
-void* Worker_Request(void* arg) {
+void *Worker_Request(void *arg) {
     // Need to read from the client
-    int threadNum = *((int*)arg); // getting thread number
+    int threadNum = *((int *) arg); // getting thread number
     long int bytesRead = 0; // Bytes read from read()
 
     char fileName[1000]; // Holds file name
@@ -348,13 +349,12 @@ void* Worker_Request(void* arg) {
     int currentReqPos = 0;
     long int currentPosBuff = 0; // current position of buffer
 
-
     //Buffers
     char requestLine[2048]; // Holds the request line
     char buffer[BUFF_SIZE + 1]; // Buffer size
 
     // get client descriptor from queue
-    void* getClient = NULL;
+    void *getClient = NULL;
     int clientFD;
     while (!ev_signQuit) { // Only exits if sign quit is set
         clientQuit = false;
@@ -368,7 +368,7 @@ void* Worker_Request(void* arg) {
             break;
         }
 
-        clientFD = *((int*)getClient);
+        clientFD = *((int *) getClient);
         free(getClient); // freeing the memory for the client
 
         // need to set client to nonblocking
@@ -378,9 +378,9 @@ void* Worker_Request(void* arg) {
         while (!ev_signQuit && !endRequest) {
             bytesRead = read(clientFD, buffer, BUFF_SIZE); // read the bytes
             if (bytesRead < 0) { // Checks for blocking
-                if (errno == EAGAIN) continue;
-            }
-            else if (bytesRead == 0) { // Client Closed connection
+                if (errno == EAGAIN)
+                    continue;
+            } else if (bytesRead == 0) { // Client Closed connection
                 clientQuit = true;
                 break;
             }
@@ -388,7 +388,7 @@ void* Worker_Request(void* arg) {
             else {
                 buffer[bytesRead] = '\0';
                 appropPlacer(buffer, bytesRead, requestLine, &currentReqPos, &endRequest,
-                            &currentPosBuff, &p1, &p2, &p3);
+                    &currentPosBuff, &p1, &p2, &p3);
             }
         }
 
@@ -397,22 +397,22 @@ void* Worker_Request(void* arg) {
             break;
         }
 
-
         if (!clientQuit) { // if client Quit
             // Checking for responses
             int reqSize = currentReqPos;
             currentReqPos = 0;
-            int result = request_format_RequestChecker(requestLine, &currentReqPos, reqSize, fileName, &Meth);
+            int result = request_format_RequestChecker(
+                requestLine, &currentReqPos, reqSize, fileName, &Meth);
             if (result == -1) {
                 // throw invalid request
                 http_methods_StatusPrint(clientFD, BAD_REQUEST_); // print status
                 close(clientFD);
                 continue;
-
             }
 
             // Checking headerfields
-            result = request_format_HeaderFieldChecker(clientFD, requestLine, &currentReqPos, reqSize, &Content_length, &Request_ID, &Meth);
+            result = request_format_HeaderFieldChecker(clientFD, requestLine, &currentReqPos,
+                reqSize, &Content_length, &Request_ID, &Meth);
             if (result == -1) {
                 http_methods_StatusPrint(clientFD, BAD_REQUEST_);
                 close(clientFD);
@@ -435,11 +435,13 @@ void* Worker_Request(void* arg) {
                 resultMeth = http_methods_PutReq(fileName, buffer, clientFD, &currentPosBuff,
                     &bytesRead, Content_length, Request_ID, logFileFD);
 
-			}
+            }
             // GET
-            else if (Meth == GET) resultMeth = http_methods_GetReq(fileName, clientFD, Request_ID, logFileFD);
+            else if (Meth == GET)
+                resultMeth = http_methods_GetReq(fileName, clientFD, Request_ID, logFileFD);
             // HEAD
-            else resultMeth = http_methods_HeadReq(fileName, clientFD, Request_ID, logFileFD);
+            else
+                resultMeth = http_methods_HeadReq(fileName, clientFD, Request_ID, logFileFD);
         }
         /*Resetting all variables to original values*/
         close(clientFD);
@@ -451,7 +453,7 @@ void* Worker_Request(void* arg) {
 
 /*URI locks that helps with the reader and write problem*/
 void URILockInit(int numThreads) {
-    e_uriLocks = malloc(sizeof(URILock));// creating array of locks for number of threads
+    e_uriLocks = malloc(sizeof(URILock)); // creating array of locks for number of threads
     e_uriLocks->size = numThreads;
     sem_init(&(e_uriLocks->changeList), 1, 1); // Initializing lock to check array
     e_uriLocks->files = malloc(numThreads * sizeof(LockFile));
@@ -459,8 +461,8 @@ void URILockInit(int numThreads) {
         (e_uriLocks->files)[i].URI[0] = '\0';
         (e_uriLocks->files)[i].numReaders = 0;
         (e_uriLocks->files)[i].numThreads = 0; // settign waiting/working threads to zero.
-       sem_init(&((e_uriLocks->files)[i].fileWrite), 1, 1);
-       sem_init(&((e_uriLocks->files)[i].numReadKey), 1, 1);
+        sem_init(&((e_uriLocks->files)[i].fileWrite), 1, 1);
+        sem_init(&((e_uriLocks->files)[i].numReadKey), 1, 1);
     }
 }
 
@@ -481,16 +483,18 @@ void FreeUriLocks() {
 void FinishThreadInit(int numThreads) {
     g_signalThreads = malloc(sizeof(signalThreads)); // malloc array for singal threads
     g_signalThreads->size = numThreads; // Holds How many threads present
-    g_signalThreads->finishThreads = calloc(numThreads, sizeof(atomic_bool)); // Initializing boolean array
+    g_signalThreads->finishThreads
+        = calloc(numThreads, sizeof(atomic_bool)); // Initializing boolean array
 }
 
 void FinishThreadInitFree() {
-    free(g_signalThreads->finishThreads);// free bool array
+    free(g_signalThreads->finishThreads); // free bool array
     free(g_signalThreads);
     g_signalThreads = NULL;
 }
 
-void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[], int *numThreads, char * log_file) {
+void OptionalArgumentChecker(
+    bool *l_flag, bool *t_flag, int argc, char *argv[], int *numThreads, char *log_file) {
     int char_get = 0; // Holds char value
     while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
         switch (char_get) {
@@ -499,10 +503,10 @@ void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[
             *l_flag = true;
             // If not string after
             if (optarg != NULL) {
-                strcpy(log_file, optarg);// copies string into log_file
-            }
-            else {
-                warnx("invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
+                strcpy(log_file, optarg); // copies string into log_file
+            } else {
+                warnx(
+                    "invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
                 exit(1);
             }
             break;
@@ -515,25 +519,24 @@ void OptionalArgumentChecker (bool *l_flag, bool *t_flag, int argc, char * argv[
                 for (uint32_t i = 0; i < strlen(optarg); ++i) {
                     if ((optarg[i] < '0') || (optarg[i] > '9')) {
                         // need to exit program
-                        warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
+                        warnx(
+                            "invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
                         exit(1);
                     }
                 }
                 *numThreads = atoi(optarg);
-            }
-            else {
+            } else {
                 warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
                 exit(1);
             }
             break;
 
             /*If some random option*/
-        case '?':
-            warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>");
-            exit(1);
+        case '?': warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>"); exit(1);
 
         case ':':
-            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>", optopt);
+            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>",
+                optopt);
             exit(1);
         }
     }

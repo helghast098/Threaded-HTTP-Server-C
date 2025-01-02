@@ -99,7 +99,7 @@ bool queue_push(queue_t *q, void *elem) {
         int size = q->size;
 
         // wait for buffer not full
-        while ( (currentLen >= size) && !ev_signQuit) {
+        while ((currentLen >= size) && !ev_signQuit) {
             pthread_cond_wait(&(q->pushCond), &(q->key)); // wait for condition
             currentLen = q->current_length;
         }
@@ -177,15 +177,15 @@ bool queue_pop(queue_t *q, void **elem) {
     return true;
 }
 
-void queue_condition_pop(queue_t* q) {
+void queue_condition_pop(queue_t *q) {
     pthread_cond_signal(&(q->popCond));
 }
 
-void queue_condition_push(queue_t* q) {
+void queue_condition_push(queue_t *q) {
     pthread_cond_signal(&(q->pushCond));
 }
 
-int queue_size(queue_t* q) {
+int queue_size(queue_t *q) {
     int size = 0;
     pthread_mutex_lock(&(q->key)); // LOCK MUTEX
     size = q->current_length;

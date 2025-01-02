@@ -3,8 +3,8 @@
 *
 */
 /*Included Libraries*/
-#include <HTTP-Methods/http_methods.h>
-#include <Request-Parser/request_parser.h>
+#include "HTTP-Methods/http_methods.h"
+#include "Request-Parser/request_parser.h"
 
 // For opening file
 #include <sys/types.h>
@@ -33,17 +33,17 @@ typedef struct LockFile {
     int numReaders;
     sem_t numReadKey;
     sem_t fileWrite; // semaphore for file write
-}LockFile;
+} LockFile;
 
 // Struct for Holding multiple file locks
 typedef struct URILock {
     int size;
     sem_t changeList;
-    LockFile* files;
-}URILock;
+    LockFile *files;
+} URILock;
 
 /*Extern Vars*/
-extern URILock* e_uriLocks; // pointer to the uri locks
+extern URILock *e_uriLocks; // pointer to the uri locks
 
 /*Private Function Declarations*/
 /** @brief Locks File
@@ -54,7 +54,7 @@ extern URILock* e_uriLocks; // pointer to the uri locks
             1 for thread to wait for head or get to finish from other thread,
             2 for thread to wait for put command to finish from some thread
 */
-int URILockFunc(char* URI, Methods method, int* indexFile);
+int URILockFunc(char *URI, Methods method, int *indexFile);
 
 /** @brief Releases the uri lock the file
 *   @param index:  index of file to be release
@@ -70,11 +70,11 @@ void URIReleaseFunc(int index, Methods method);
 *   @param method:  The method of the client request
 *   @return void
 */
-void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char* method);
+void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char *method);
 
 /*Function defintions*/
-int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* currentPosBuf,
-    long int* bytesRead, long int contentLength, long int reqNum, int logFD) {
+int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *currentPosBuf,
+    long int *bytesRead, long int contentLength, long int reqNum, int logFD) {
 
     // creating a temp file
     char tempFile[] = "TEMPFILE-XXXXXX";
@@ -83,48 +83,45 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     // checking content_length
     long int bytesLeftToWrite = contentLength - (*bytesRead - *currentPosBuf);
 
-
-	// Variables used for interrupts
+    // Variables used for interrupts
     int bytesWritten = 0; // used to check if write actually writes
 
-	long int messageLen = 0;
-	char messageHolder[MAX_PUT_MESSAGE_BUFF];
-
+    long int messageLen = 0;
+    char messageHolder[MAX_PUT_MESSAGE_BUFF];
 
     // Copy buffer into messageHolder
     for (int i = 0; i < *bytesRead; ++i) {
         messageHolder[i] = buffer[i + *currentPosBuf];
     }
 
+    messageLen = *bytesRead - *currentPosBuf;
 
-	messageLen = *bytesRead - *currentPosBuf;
+    if (bytesLeftToWrite == 0) {
 
-	if (bytesLeftToWrite == 0) {
-
-		bytesWritten = write(fd, messageHolder, messageLen);
-	}
-	else {
-		while (bytesLeftToWrite != 0 && !ev_signQuit) {
-			if (messageLen == MAX_PUT_MESSAGE_BUFF) {
-				bytesWritten = write(fd, messageHolder, messageLen);
-				if (bytesWritten < 0) break;
-				messageLen = 0;
-			}
-			else {
-				*bytesRead = read(clientFD, messageHolder + messageLen, MAX_PUT_MESSAGE_BUFF - messageLen);
-				if (*bytesRead <= 0) break;
-				bytesLeftToWrite -= *bytesRead;
-				messageLen += *bytesRead;
-			}
-		}
-		if (bytesLeftToWrite >= 0 && *bytesRead >= 0 && !ev_signQuit) {
-			bytesWritten = write(fd, messageHolder, messageLen);
-		}
-		else {
-			http_methods_StatusPrint(clientFD, ISE_);
-			LogFilePrint(reqNum, logFD, 500, file, "PUT"); // Printing to Log
-		}
-	}
+        bytesWritten = write(fd, messageHolder, messageLen);
+    } else {
+        while (bytesLeftToWrite != 0 && !ev_signQuit) {
+            if (messageLen == MAX_PUT_MESSAGE_BUFF) {
+                bytesWritten = write(fd, messageHolder, messageLen);
+                if (bytesWritten < 0)
+                    break;
+                messageLen = 0;
+            } else {
+                *bytesRead
+                    = read(clientFD, messageHolder + messageLen, MAX_PUT_MESSAGE_BUFF - messageLen);
+                if (*bytesRead <= 0)
+                    break;
+                bytesLeftToWrite -= *bytesRead;
+                messageLen += *bytesRead;
+            }
+        }
+        if (bytesLeftToWrite >= 0 && *bytesRead >= 0 && !ev_signQuit) {
+            bytesWritten = write(fd, messageHolder, messageLen);
+        } else {
+            http_methods_StatusPrint(clientFD, ISE_);
+            LogFilePrint(reqNum, logFD, 500, file, "PUT"); // Printing to Log
+        }
+    }
 
     // Lock the File
     int fileIndex;
@@ -133,7 +130,8 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     int lockResult = URILockFunc(file, PUT, &fileIndex); // locking file
 
     if (lockResult == 1)
-        while(sem_wait(&(e_uriLocks->files[fileIndex].fileWrite)) < 0); // getting write lock
+        while (sem_wait(&(e_uriLocks->files[fileIndex].fileWrite)) < 0)
+            ; // getting write lock
 
     // need to check if file exists
     bool fileExist = false;
@@ -146,7 +144,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     rename(tempFile, file);
 
     /*If I cannot process the full request because of some interruption*/
-	printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
+    printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
     if (bytesLeftToWrite != 0) {
         // need to clear file
         fd = open(file, O_TRUNC | O_WRONLY);
@@ -158,8 +156,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
         http_methods_StatusPrint(clientFD, CREATED_);
         LogFilePrint(reqNum, logFD, 201, file, "PUT"); // Printing to Log
         URIReleaseFunc(fileIndex, PUT);
-    }
-    else {
+    } else {
         http_methods_StatusPrint(clientFD, OK_);
         LogFilePrint(reqNum, logFD, 200, file, "PUT"); // Printing to Log
         URIReleaseFunc(fileIndex, PUT);
@@ -168,8 +165,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
     return 0;
 }
 
-
-int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
+int http_methods_GetReq(char *file, int clientFD, long int reqNum, int logFD) {
     // first checking if file exists
     int fd; // file descriptor for file wanted
     struct stat fileStat; // Holds status of file
@@ -182,13 +178,15 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
     // Write. So only waiting for write
     if (statusURILock == 2) {
-        while (sem_wait(&(e_uriLocks->files[URILockIndex].numReadKey)) < 0); // getting lock to change counter
+        while (sem_wait(&(e_uriLocks->files[URILockIndex].numReadKey)) < 0)
+            ; // getting lock to change counter
 
         ++(e_uriLocks->files[URILockIndex].numReaders); // increment num of readers
 
         // Getting lock to stop writing to file
         if (e_uriLocks->files[URILockIndex].numReaders == 1) {
-            while (sem_wait(&(e_uriLocks->files[URILockIndex].fileWrite)) < 0); // getting write lock
+            while (sem_wait(&(e_uriLocks->files[URILockIndex].fileWrite)) < 0)
+                ; // getting write lock
         }
 
         sem_post(&(e_uriLocks->files[URILockIndex].numReadKey)); // release numReader Key
@@ -271,14 +269,15 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
         // Increment bytes
         if (bytesWritten > 0) {
-                bytesContinuation += bytesWritten;
+            bytesContinuation += bytesWritten;
         }
-    } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < strlen(serverMess)) && (bytesContinuation > 0)));
+    } while (((bytesWritten < 0) && (errno == EINTR))
+             || ((bytesContinuation < strlen(serverMess)) && (bytesContinuation > 0)));
 
     bytesContinuation = 0; // reset how many bytes written
 
     /*writing file content to client FD*/
-    while(1) {
+    while (1) {
         bytesRead = read(fd, buffer, 4096); // read bytes
 
         if (bytesRead == 0) { // If there's nothing to read
@@ -287,7 +286,8 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
 
         if (bytesRead < 0) {
             // continue
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
             else {
                 close(fd); // close the file
 
@@ -313,7 +313,8 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < (unsigned long)bytesRead) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < (unsigned long) bytesRead) && (bytesContinuation > 0)));
         bytesContinuation = 0; // resetting the bytesContinuation
     }
 
@@ -325,7 +326,7 @@ int http_methods_GetReq(char* file, int clientFD, long int reqNum, int logFD) {
     return 0;
 }
 
-int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
+int http_methods_HeadReq(char *file, int clientFD, long int reqNum, int logFD) {
     // first checking if file exists
     int fd; // Holds file descriptor of file that client wants
     struct stat fileStat; // Status of opening file
@@ -336,11 +337,13 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
     int URILockIndex = 0;
     int statusURILock = URILockFunc(file, HEAD, &URILockIndex); // acquring URI lock
     if (statusURILock == 2) { // Write. So only waiting for write
-        while (sem_wait(&(e_uriLocks->files[URILockIndex].numReadKey)) < 0); // getting lock to change counter
+        while (sem_wait(&(e_uriLocks->files[URILockIndex].numReadKey)) < 0)
+            ; // getting lock to change counter
 
         ++(e_uriLocks->files[URILockIndex].numReaders); // increment num of readers
         if (e_uriLocks->files[URILockIndex].numReaders == 1) { // If the first
-            while (sem_wait(&(e_uriLocks->files[URILockIndex].fileWrite)) < 0); // getting write lock
+            while (sem_wait(&(e_uriLocks->files[URILockIndex].fileWrite)) < 0)
+                ; // getting write lock
         }
         sem_post(&(e_uriLocks->files[URILockIndex].numReadKey)); // release numReader Key
     }
@@ -413,7 +416,8 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
         if (bytesWritten > 0) {
             bytesContinuation += bytesWritten;
         }
-    } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < (int)strlen(serverMess)) && (bytesContinuation > 0)));
+    } while (((bytesWritten < 0) && (errno == EINTR))
+             || ((bytesContinuation < (int) strlen(serverMess)) && (bytesContinuation > 0)));
 
     LogFilePrint(reqNum, logFD, 200, file, "HEAD"); // Printing to Log
     close(fd);
@@ -421,9 +425,10 @@ int http_methods_HeadReq(char* file, int clientFD, long int reqNum, int logFD) {
     return 0;
 }
 
-void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char* method) {
+void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char *method) {
     // lock file
-    while (flock(logFD, LOCK_EX) < 0); // getting flock
+    while (flock(logFD, LOCK_EX) < 0)
+        ; // getting flock
 
     char log_message[1000]; // Creates log message
 
@@ -434,18 +439,20 @@ void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char* 
 
     // If write is interrupted, then try again
     do {
-       bytesWritten = write(logFD, log_message, strlen(log_message)); // write to log
+        bytesWritten = write(logFD, log_message, strlen(log_message)); // write to log
 
-       // Increment bytes
-       if ((bytesWritten < 0) && (errno != EINTR)) break;
+        // Increment bytes
+        if ((bytesWritten < 0) && (errno != EINTR))
+            break;
 
-       if (bytesWritten > 0) bytesContinuation += bytesWritten;
-    } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < (int)strlen(log_message)) && (bytesContinuation > 0)));
+        if (bytesWritten > 0)
+            bytesContinuation += bytesWritten;
+    } while (((bytesWritten < 0) && (errno == EINTR))
+             || ((bytesContinuation < (int) strlen(log_message)) && (bytesContinuation > 0)));
 
     // release lock on log
     flock(logFD, LOCK_UN);
 }
-
 
 void http_methods_StatusPrint(int clientFD, StatusC status) {
     int bytesWritten = 0; // Bytes written by write()
@@ -453,22 +460,25 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
     switch (status) {
     case OK_:
         do {
-           bytesWritten = write(clientFD, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nOK\r\n", 42);
-           // Increment bytes
-           if (bytesWritten > 0) {
-               bytesContinuation += bytesWritten;
-           }
-           // adding If not errno == INTR
-           if ((bytesWritten < 0) && (errno != EINTR)) {
-               break;
-           }
+            bytesWritten
+                = write(clientFD, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nOK\r\n", 42);
+            // Increment bytes
+            if (bytesWritten > 0) {
+                bytesContinuation += bytesWritten;
+            }
+            // adding If not errno == INTR
+            if ((bytesWritten < 0) && (errno != EINTR)) {
+                break;
+            }
 
-        } while ( ((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 42) && (bytesContinuation > 0)) );
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 42) && (bytesContinuation > 0)));
         break;
 
     case CREATED_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 201 Created\r\nContent-Length: 9\r\n\r\nCreated\r\n", 52);
+            bytesWritten = write(
+                clientFD, "HTTP/1.1 201 Created\r\nContent-Length: 9\r\n\r\nCreated\r\n", 52);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -477,12 +487,14 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
             if ((bytesWritten < 0) && (errno != EINTR)) {
                 break;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 52) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 52) && (bytesContinuation > 0)));
         break;
 
     case BAD_REQUEST_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 400 Bad Request\r\nContent-Length: 13\r\n\r\nBad Request\r\n", 61);
+            bytesWritten = write(clientFD,
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 13\r\n\r\nBad Request\r\n", 61);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -491,26 +503,31 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
             if ((bytesWritten < 0) && (errno != EINTR)) {
                 break;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 61) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 61) && (bytesContinuation > 0)));
         break;
 
     case FORBIDDEN_:
         do {
-           bytesWritten = write(clientFD, "HTTP/1.1 403 Forbidden\r\nContent-Length: 11\r\n\r\nForbidden\r\n", 57);
-           // Increment bytes
-           if (bytesWritten > 0) {
-               bytesContinuation += bytesWritten;
-           }
-           // adding If not errno == INTR
-           if ((bytesWritten < 0) && (errno != EINTR)) {
-               break;
-           }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 57) && (bytesContinuation > 0)));
+            bytesWritten = write(
+                clientFD, "HTTP/1.1 403 Forbidden\r\nContent-Length: 11\r\n\r\nForbidden\r\n", 57);
+            // Increment bytes
+            if (bytesWritten > 0) {
+                bytesContinuation += bytesWritten;
+            }
+            // adding If not errno == INTR
+            if ((bytesWritten < 0) && (errno != EINTR)) {
+                break;
+            }
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 57) && (bytesContinuation > 0)));
         break;
 
     case NOT_IMP_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 501 Not Implemented\r\nContent-Length: 17\r\n\r\nNot Implemented\r\n", 69);
+            bytesWritten = write(clientFD,
+                "HTTP/1.1 501 Not Implemented\r\nContent-Length: 17\r\n\r\nNot Implemented\r\n",
+                69);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -519,12 +536,14 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
             if ((bytesWritten < 0) && (errno != EINTR)) {
                 break;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 69) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 69) && (bytesContinuation > 0)));
         break;
 
     case NOT_FOUND_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 404 Not Found\r\nContent-Length: 11\r\n\r\nNot Found\r\n", 57);
+            bytesWritten = write(
+                clientFD, "HTTP/1.1 404 Not Found\r\nContent-Length: 11\r\n\r\nNot Found\r\n", 57);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -533,12 +552,16 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
             if ((bytesWritten < 0) && (errno != EINTR)) {
                 break;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 57) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 57) && (bytesContinuation > 0)));
         break;
 
     case ISE_:
         do {
-            bytesWritten = write(clientFD, "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 23\r\n\r\nInternal Server Error\r\n", 81);
+            bytesWritten = write(clientFD,
+                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 23\r\n\r\nInternal Server "
+                "Error\r\n",
+                81);
             // Increment bytes
             if (bytesWritten > 0) {
                 bytesContinuation += bytesWritten;
@@ -547,7 +570,8 @@ void http_methods_StatusPrint(int clientFD, StatusC status) {
             if ((bytesWritten < 0) && (errno != EINTR)) {
                 break;
             }
-        } while (((bytesWritten < 0) && (errno == EINTR)) || ((bytesContinuation < 81) && (bytesContinuation > 0)));
+        } while (((bytesWritten < 0) && (errno == EINTR))
+                 || ((bytesContinuation < 81) && (bytesContinuation > 0)));
         break;
     }
 }
@@ -558,14 +582,15 @@ int URILockFunc(char *URI, Methods method, int *indexFile) {
     int index_stop_no_files = 0;
 
     // &&Get lock for changing list
-    while (sem_wait(&(e_uriLocks->changeList)) < 0);
+    while (sem_wait(&(e_uriLocks->changeList)) < 0)
+        ;
 
     /*Looking to see which spot is free to change*/
     int SizeList = e_uriLocks->size;
 
     for (int i = 0; i < SizeList; ++i) {
         // checking for similar uris
-        LockFile* currentFile = &(e_uriLocks->files[i]); // holding file struct
+        LockFile *currentFile = &(e_uriLocks->files[i]); // holding file struct
 
         if (strcmp(currentFile->URI, URI) != 0) { // found a different uri
             if (currentFile->numThreads == 0) { // if no threads using this file
@@ -586,19 +611,19 @@ int URILockFunc(char *URI, Methods method, int *indexFile) {
                 if (method != PUT) {
                     currentFile->numReaders += 1; // increase number of readers
                 }
-                while(sem_wait(&(currentFile->fileWrite)) < 0); // get the write semaphore
+                while (sem_wait(&(currentFile->fileWrite)) < 0)
+                    ; // get the write semaphore
 
                 sem_post(&(e_uriLocks->changeList)); // release list change semphore
                 return 0; // Mean that first semaphore is gotten
             }
             // If there is already working threads present
             else {
-                currentFile->numThreads += 1;  // Increment thread count using file
+                currentFile->numThreads += 1; // Increment thread count using file
                 if (method == PUT) {
                     sem_post(&(e_uriLocks->changeList)); // release list change semphore
                     return 1; // returns 1 to signify thread to wait for PUT
-                }
-                else {
+                } else {
                     sem_post(&(e_uriLocks->changeList)); // release list change semphore
                     return 2; // returns 2 to signify thread to wait for GET or HEAD
                 }
@@ -606,7 +631,8 @@ int URILockFunc(char *URI, Methods method, int *indexFile) {
         }
     }
     // If no thread found during that looking
-    LockFile* currentFile = &(e_uriLocks->files[indexes_with_no_file[0]]); // geting first file not used
+    LockFile *currentFile
+        = &(e_uriLocks->files[indexes_with_no_file[0]]); // geting first file not used
     *indexFile = indexes_with_no_file[0]; // getting the index
     currentFile->numThreads += 1; // setting first thread usage
 
@@ -616,7 +642,8 @@ int URILockFunc(char *URI, Methods method, int *indexFile) {
     }
 
     currentFile->URI[strlen(URI)] = '\0'; // adding null char
-    while (sem_wait(&(currentFile->fileWrite)) < 0); // getting write semaphore
+    while (sem_wait(&(currentFile->fileWrite)) < 0)
+        ; // getting write semaphore
 
     // release lock
     if (method != PUT) {
@@ -624,13 +651,12 @@ int URILockFunc(char *URI, Methods method, int *indexFile) {
     }
     sem_post(&(e_uriLocks->changeList)); // release list change semphore
     return 0; // Means first semaphore gotten
-
 }
-
 
 void URIReleaseFunc(int index, Methods Meth) {
     if (Meth != PUT) { // If the Method was a HEAD or GET
-        while (sem_wait(&(e_uriLocks->files[index].numReadKey)) < 0); // Getting lock to change number waitng on thread
+        while (sem_wait(&(e_uriLocks->files[index].numReadKey)) < 0)
+            ; // Getting lock to change number waitng on thread
         e_uriLocks->files[index].numReaders -= 1;
 
         // checking if zero
@@ -640,12 +666,11 @@ void URIReleaseFunc(int index, Methods Meth) {
 
         sem_post(&(e_uriLocks->files[index].numReadKey));
 
-    }
-    else {
+    } else {
         sem_post(&(e_uriLocks->files[index].fileWrite)); // release the write lock
-
     }
-    while (sem_wait(&(e_uriLocks->changeList)) < 0); // &&Get lock for changing list
+    while (sem_wait(&(e_uriLocks->changeList)) < 0)
+        ; // &&Get lock for changing list
     e_uriLocks->files[index].numThreads -= 1; // remove 1 number threads waiting
     sem_post(&(e_uriLocks->changeList)); // release list change semphore
 }
