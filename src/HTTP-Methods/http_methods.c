@@ -25,6 +25,9 @@
 
 #define MAX_PUT_MESSAGE_BUFF 10000
 
+/*Extern Vars*/
+extern URILock *e_uriLocks; // pointer to the uri locks
+
 /*Type Definitions*/
 // struct for holding a single uri
 typedef struct LockFile {
@@ -42,35 +45,6 @@ typedef struct URILock {
     LockFile *files;
 } URILock;
 
-/*Extern Vars*/
-extern URILock *e_uriLocks; // pointer to the uri locks
-
-/*Private Function Declarations*/
-/** @brief Locks File
-*   @param URI: File to lock
-*   @param method: http method that need to lock file
-*   @param indexFile: index of file if found with lock already
-*   @return 0 for thread to go,
-            1 for thread to wait for head or get to finish from other thread,
-            2 for thread to wait for put command to finish from some thread
-*/
-int URILockFunc(char *URI, Methods method, int *indexFile);
-
-/** @brief Releases the uri lock the file
-*   @param index:  index of file to be release
-*   @param method: Method of http request
-*   @return void
-*/
-void URIReleaseFunc(int index, Methods method);
-
-/** @brief prints to the log file of the server
-*   @param reqNum: The number given to client request
-*   @param logFD: The file descriptor of the server log file
-*   @param file: The file name the request wanted to use
-*   @param method:  The method of the client request
-*   @return void
-*/
-void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char *method);
 
 /*Function defintions*/
 int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *currentPosBuf,
@@ -97,14 +71,14 @@ int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *curren
     messageLen = *bytesRead - *currentPosBuf;
 
     if (bytesLeftToWrite == 0) {
-
         bytesWritten = write(fd, messageHolder, messageLen);
     } else {
         while (bytesLeftToWrite != 0 && !ev_signQuit) {
             if (messageLen == MAX_PUT_MESSAGE_BUFF) {
                 bytesWritten = write(fd, messageHolder, messageLen);
-                if (bytesWritten < 0)
+                if (bytesWritten < 0) {
                     break;
+                }
                 messageLen = 0;
             } else {
                 *bytesRead
@@ -166,7 +140,6 @@ int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *curren
 }
 
 int http_methods_GetReq(char *file, int clientFD, long int reqNum, int logFD) {
-    // first checking if file exists
     int fd; // file descriptor for file wanted
     struct stat fileStat; // Holds status of file
     int bytesWritten = 0; // used to check if write actually writes
@@ -174,7 +147,7 @@ int http_methods_GetReq(char *file, int clientFD, long int reqNum, int logFD) {
 
     // Acquire URI Lock for file
     int URILockIndex = 0;
-    int statusURILock = URILockFunc(file, GET, &URILockIndex); // acquring URI lock
+    int statusURILock = URILockFunc(file, GET, &URILockIndex); // acquiring URI lock
 
     // Write. So only waiting for write
     if (statusURILock == 2) {

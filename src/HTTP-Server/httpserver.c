@@ -29,13 +29,20 @@
 #include <semaphore.h>
 
 // Included Custom Libraries
-#include <Bind/bind.h>
-#include <HTTP-Methods/http_methods.h>
-#include <HTTP-Server/httpserver.h>
-#include <Queue/queue.h>
-#include <Request-Parser/request_parser.h>
+#include "Bind/bind.h"
+#include "HTTP-Methods/http_methods.h"
+#include "HTTP-Server/httpserver.h"
+#include "Queue/queue.h"
+#include "Request-Parser/request_parser.h"
+
+
+/*Global Vars*/
+URILock *e_uriLocks; // pointer to the uri locks
+
+signalThreads *g_signalThreads; // pointer to signal threads
 
 /*Type Definitions*/
+
 // Struct for holding a single uri
 typedef struct LockFile {
     int numThreads; // Number of threads that are present here
@@ -58,10 +65,6 @@ typedef struct signalThreads {
     atomic_bool *finishThreads; // Holds an array for finished threads
 } signalThreads;
 
-/*Global Vars*/
-URILock *e_uriLocks; // pointer to the uri locks
-
-signalThreads *g_signalThreads; // pointer to signal threads
 
 //Flag for interrupt
 volatile atomic_bool ev_signQuit
