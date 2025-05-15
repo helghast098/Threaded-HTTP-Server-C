@@ -4,8 +4,8 @@
 * Houses function declaration for httpserver
 */
 
-#ifndef HTTPSERVER_H
-#define HTTPSERVER_H
+#ifndef SIMPLEHTTP_SERVER_H_
+#define SIMPLEHTTP_SERVER_H_
 
 /*Included Libraries*/
 #include <stdint.h>

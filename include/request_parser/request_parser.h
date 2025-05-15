@@ -4,8 +4,8 @@
 * Houses function declarations for request_format
 */
 
-#ifndef REQUEST_PARSER_H
-#define REQUEST_PARSER_H
+#ifndef SIMPLEHTTP_REQUEST_PARSER_H_
+#define SIMPLEHTTP_REQUEST_PARSER_H_
 
 /*Libraries Included*/
 #include <stdbool.h>

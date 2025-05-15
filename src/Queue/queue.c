@@ -4,191 +4,181 @@
 * Houses function definitions of multithreaded safe queue
 */
 
-/*Libraries Included*/
-#include "Queue/queue.h"
+/*Related Libraries*/
+#include "queue/queue.h"
 
-/*Type Definitions*/
 typedef struct NodeObj {
     void *data;
-    struct NodeObj *prevNode;
+    struct NodeObj *previous_node;
 } NodeObj;
 
 typedef NodeObj *Node;
 
-// Defines queue
-typedef struct queue {
+typedef struct Queue {
     int size;
     int current_length;
-    Node Head;
-    Node Tail;
-    pthread_mutex_t key; // For mutuex
-    pthread_cond_t pushCond; // For push condition
-    pthread_cond_t popCond; // For pop condition
-} queue;
+    Node head;
+    Node tail;
+    pthread_mutex_t key;
+    pthread_cond_t push_condition;
+    pthread_cond_t pop_condition;
+} Queue;
 
-/** @brief Creates a new Node
-*   @param elem:  The data to store node
-*   @return Node: created node
-*/
-Node newNode(void *elem) {
-    Node N = malloc(sizeof(NodeObj));
-    // Checks if malloc worked
-    if (N == NULL) {
+Node newNode( void *elem ) {
+    Node node = malloc( sizeof( NodeObj ) );
+
+    if ( node == NULL ) {
         return NULL;
     }
-    N->data = elem;
-    N->prevNode = NULL;
-    return N;
+
+    node->data = elem;
+    node->previous_node = NULL;
+
+    return node;
 }
 
-/*Function Definitions*/
-queue_t *queue_new(int size) {
-    queue_t *q_holder = malloc(sizeof(queue_t)); // creates the queue
+Queue *QueueNew( int size ) {
+    Queue *queue = malloc( sizeof( Queue ) );
 
-    // Checks if malloc worked
-    if (q_holder == NULL) {
-        return q_holder;
+    if ( queue == NULL ) {
+        return NULL;
     }
-    q_holder->size = size; // Set the queue size
-    q_holder->current_length = 0; // set current length
-    q_holder->Head = NULL;
-    q_holder->Tail = NULL;
 
-    // Initializing p thread variables
-    pthread_mutex_init(&(q_holder->key), NULL);
-    pthread_cond_init(&(q_holder->pushCond), NULL);
-    pthread_cond_init(&(q_holder->popCond), NULL);
-    return q_holder;
+    queue->size = size;
+    queue->current_length = 0;
+    queue->head = NULL;
+    queue->tail = NULL;
+
+    pthread_mutex_init( &( queue->key ), NULL );
+    pthread_cond_init( &( queue->push_condition ), NULL );
+    pthread_cond_init( &( queue->pop_condition ), NULL );
+
+    return queue;
 }
 
-void queue_delete(queue_t **q) {
-    // Checking for valid pointer and values
-    if (q != NULL && *q != NULL) {
-        int num_of_elem = (*q)->current_length;
-        void *trash;
-
-        // removes elements of queue
-        for (int i = 0; i < num_of_elem; ++i) {
-            queue_pop(*q, &trash);
-        }
-
-        // Destroy the mutexes
-        pthread_mutex_destroy(&((*q)->key));
-        pthread_cond_destroy(&((*q)->popCond));
-        pthread_cond_destroy(&((*q)->pushCond));
-
-        // free memory
-        free(*q);
-
-        // setting q to null
-        *q = NULL;
+void QueueDelete(Queue **q) {
+    if ( q == NULL || *q == NULL ) {
+        return;
     }
+
+    int num_of_elem = (*q)->current_length;
+    void *trash;
+
+    // removes elements of queue
+    for ( int i = 0; i < num_of_elem; ++i ) {
+        QueuePop( *q, &trash );
+    }
+
+    // Destroy the mutexes
+    pthread_mutex_destroy( &( ( *q )->key ) );
+    pthread_cond_destroy( &( ( *q )->pop_condition ) );
+    pthread_cond_destroy( &( ( *q )->push_condition ) );
+
+    free( *q );
+
+    *q = NULL;
 }
 
-bool queue_push(queue_t *q, void *elem) {
-    // need to create new node
-    // incrementing current_length  WATCH OUT FOR THREADS HERE
+bool QueuePush( Queue *q, void *elem ) {
 
-    // If valid pointer to queue
+
     if (q == NULL) {
         return false;
-    } else {
-        // add a safe mutex here
-        pthread_mutex_lock(&(q->key)); // LOCK MUTEX
-        int currentLen = q->current_length;
-        int size = q->size;
-
-        // wait for buffer not full
-        while ((currentLen >= size) && !ev_signQuit) {
-            pthread_cond_wait(&(q->pushCond), &(q->key)); // wait for condition
-            currentLen = q->current_length;
-        }
-
-        // If a signal to quit is recieved
-        if (ev_signQuit) {
-            pthread_cond_signal(&(q->pushCond));
-            pthread_mutex_unlock(&(q->key));
-            return false;
-        }
-
-        // Critical Section
-        Node N = newNode(elem); // creates new Node
-        if (N == NULL) {
-            pthread_mutex_unlock(&(q->key));
-            return false;
-        }
-
-        // the list is empty
-        q->current_length += 1;
-
-        if (currentLen == 0) {
-            q->Head = N;
-            q->Tail = N;
-            pthread_cond_signal(&(q->popCond));
-        } else {
-            q->Tail->prevNode = N; // Set tail prevNode to new node
-            q->Tail = N; // Set new node to tail position
-        }
-        pthread_mutex_unlock(&(q->key)); // UNLOCK MUTEX
     }
-    return true;
-}
 
-bool queue_pop(queue_t *q, void **elem) {
-    // Checking for valid queue and elem
-    if ((q == NULL) || (elem == NULL))
+    // locking mutex
+    pthread_mutex_lock(&(q->key));
+
+    // wait for buffer not full
+    while ( ( q->current_length == q->size ) && !ev_interrupt_received ) {
+        pthread_cond_wait(&(q->push_condition), &(q->key));
+    }
+
+    //signal to quit is received
+    if ( ev_interrupt_received ) {
+        pthread_mutex_unlock( &( q->key ) );
         return false;
-    else {
-        // need to lock this section
-        pthread_mutex_lock(&(q->key)); // LOCK MUTEX
-        int currentLen = q->current_length;
-
-        while ((currentLen == 0) && !ev_signQuit) {
-            pthread_cond_wait(&(q->popCond), &(q->key));
-            currentLen = q->current_length;
-        }
-
-        // If a end signal is received
-        if (ev_signQuit) {
-            pthread_mutex_unlock(&(q->key));
-            pthread_cond_signal(&(q->popCond));
-            return false;
-        }
-
-        // if there's only 1 element
-        *elem = q->Head->data; // save the data
-        q->Head->data = NULL; // setting node data to NULL
-
-        if (currentLen == 1) {
-            q->Head->prevNode = NULL; // setting node prev data to NULL
-            free(q->Head); // freeing Node
-            q->Head = NULL;
-            q->Tail = NULL;
-        } else {
-            Node Holder = q->Head;
-            q->Head = Holder->prevNode;
-            Holder->prevNode = NULL;
-            free(Holder);
-        }
-        q->current_length -= 1;
-        pthread_cond_signal(&(q->pushCond));
-        pthread_mutex_unlock(&(q->key)); // UNLOCK MUTEX
     }
+
+    //== START CRITICAL SECTION ==
+    Node node = newNode(elem);
+    if ( node == NULL ) {
+        pthread_mutex_unlock( &( q->key ) );
+        return false;
+    }
+
+    q->current_length += 1;
+
+    if ( q->current_length == 0 ) {
+        q->head = node;
+        pthread_cond_signal( &( q->pop_condition ) );
+    } 
+    else {
+        q->tail->previous_node = node; // Set tail previous node to new node
+    }
+
+    q->tail = node;
+
+    // == END CRITICAL SECTION ==
+    pthread_mutex_unlock( &( q->key ) );
     return true;
 }
 
-void queue_condition_pop(queue_t *q) {
-    pthread_cond_signal(&(q->popCond));
+bool QueuePop( Queue *q, void **elem ) {
+    if ( ( q == NULL ) || ( elem == NULL ) ) {
+        return false;
+    }
+
+    pthread_mutex_lock(&(q->key));
+
+    while ( (q->current_length == 0 ) && !ev_interrupt_received ) {
+        pthread_cond_wait( &( q->pop_condition ), &( q->key ) );
+    }
+
+    // If an end signal is received
+    if ( ev_interrupt_received ) {
+        *elem = NULL;
+        pthread_mutex_unlock ( &( q->key ) );
+        return false;
+    }
+
+    *elem = q->head->data; // saving the data for user
+    q->head->data = NULL; // setting node data to NULL
+
+    Node head_holder = q->head;
+    q->head = q->head->previous_node;
+
+    if (q->current_length == 1)
+    {
+        q->tail = NULL;
+    }
+
+    if (q->current_length == q->size)
+    {
+        pthread_cond_signal( &( q->push_condition ) );
+    }
+
+    free( head_holder );
+
+    q->current_length -= 1;
+
+    pthread_mutex_unlock( &( q->key ) );
+
+    return true;
+}
+void QueueWakeThreads(Queue* q) {
+    if ( q == NULL ) {
+        return;
+    }
+
+    pthread_cond_signal( &( q->push_condition ) );
+    pthread_cond_signal( &( q->pop_condition ) );
 }
 
-void queue_condition_push(queue_t *q) {
-    pthread_cond_signal(&(q->pushCond));
-}
-
-int queue_size(queue_t *q) {
+int QueueSize( Queue *q ) {
     int size = 0;
-    pthread_mutex_lock(&(q->key)); // LOCK MUTEX
+    pthread_mutex_lock( &( q->key ) ); // LOCK MUTEX
     size = q->current_length;
-    pthread_mutex_unlock(&(q->key));
+    pthread_mutex_unlock( &( q->key ) );
     return size;
 }
