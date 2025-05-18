@@ -11,11 +11,33 @@
 #include <stdbool.h>
 
 /*Macro Definitions*/
-#define METHOD_LENGTH     8
+#define METHOD_LENGTH  8
+#define FILE_NAME_LENGTH 1000 // Not including \0
 #define VERSION_LENGTH 8
-
 /*Type Definitions*/
-typedef enum { HEAD, PUT, GET, NO_VALID } Methods;
+typedef enum { HEAD, PUT, GET, NOT_VALID } Methods;
+
+typedef enum {
+    INITIAL_STATE = 0,
+    FIRST_R,
+    FIRST_N,
+    SECOND_R,
+    REQUEST_COMPLETE
+} RequestState;
+
+typedef struct {
+    char *data;
+    size_t current_index;
+    size_t length;
+    size_t max_size;
+} Buffer;
+
+typedef struct {
+    Buffer buffer;
+    RequestState current_state;
+    Methods type; // Set by RequestChecker
+    char *file // Set by RequestChecker() please malloc the data
+} Request;
 
 /*Function Declarations*/
 /** @brief Checks if the request from the client is valid
@@ -26,7 +48,9 @@ typedef enum { HEAD, PUT, GET, NO_VALID } Methods;
 *   @param meth: The method (put, get, head) the client wants to do
 *   @return 0 for success, -1 on failure
 */
-int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize, char* file, Methods* method);
+
+
+int RequestChecker(Request *request);
 
 /** @brief Checks if header fields are valid
 *   @param buffer: Holds the string of the request
@@ -37,6 +61,6 @@ int request_format_RequestChecker(char* buffer, int* currentPos, int bufferSize,
 *   @param method: The type of request from client
 *   @return 0 on success, -1 on failure
 */
-int request_format_HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
+int HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
 
 #endif

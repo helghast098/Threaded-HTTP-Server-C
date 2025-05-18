@@ -42,6 +42,8 @@ URILock *e_uriLocks; // pointer to the uri locks
 signalThreads *g_signalThreads; // pointer to signal threads
 
 /*Type Definitions*/
+#define REQUEST_BUFFER_SIZE 2048
+#define CLIENT_BUFFER_SIZE 1024
 
 // Struct for holding a single uri
 typedef struct LockFile {
@@ -66,11 +68,15 @@ typedef struct signalThreads {
 } signalThreads;
 
 
+// Enum to show the current state of the request
+// A consecutive /r/n/r/n will signify the end of a request
+
+
 //Flag for interrupt
-volatile atomic_bool ev_signQuit
+volatile atomic_bool ev_interrupt_received
     = false; // If terminate signal happens, quit. Also, atomic variable
 
-// Queue for holding clientFD
+// Queue for holding client_fd
 queue_t *g_queueRequest;
 
 // Holds logfile FD
@@ -125,7 +131,7 @@ void OptionalArgumentChecker(
 void sig_Interrupt(int signum) {
     printf("Start Signal Handling\n");
     if (signum == SIGTERM) {
-        ev_signQuit = true; // set sign quit to true
+        ev_interrupt_received = true; // set sign quit to true
     }
 }
 
@@ -195,49 +201,48 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Creating the URI locks
     URILockInit(numThreads);
 
-    // Creating the Struct to hold whether a thread finished after a SIGTERM
     FinishThreadInit(numThreads);
 
-    // Creating Threads
     pthread_t worker_threads[numThreads]; // create numThreads workers
 
-    // Thread identifiers
     int threadNumber[numThreads];
 
-    for (int i = 0; i < numThreads; ++i) {
+    for ( int i = 0; i < numThreads; ++i ) {
         threadNumber[i] = i;
     }
-    for (int i = 0; i < numThreads; ++i) {
+
+    for ( int i = 0; i < numThreads; ++i ) {
         void *ThreadArg = &(threadNumber[i]); // Giving each thread an identifier
         pthread_create(worker_threads + i, NULL, Worker_Request, ThreadArg);
     }
 
     // Processing Client
     printf("Starting Server\n");
-    while (!ev_signQuit) { // if the signal for quitting not set
-        int *clientFD = malloc(sizeof(int));
-        *(clientFD) = accept(socketFD, NULL, NULL); // waiting for connections
+
+    while ( !ev_interrupt_received ) {
+        int *client_fd = malloc( sizeof(int) );
+        *( client_fd ) = accept( socketFD, NULL, NULL ); // waiting for connections
 
         /*If accept produces an error*/
-        if ((*clientFD) < 0) {
-            free(clientFD); // need to free clientFD memory
+        if ( ( *client_fd ) < 0 ) {
+            free( client_fd );
 
-            if (errno == EINTR) { // need to break free and end program
+            if ( errno == EINTR ) { // need to break free and end program
                 break;
-            } else
-                continue; // Else try again
+            }
+            else {
+                continue; // try again
+            }
         }
 
-        // if clientFD not put in queue because sigterm
-        if (!queue_push(g_queueRequest, clientFD)) {
-            free(clientFD);
+        // if client_fd not put in queue because sigterm
+        if ( !queue_push( g_queueRequest, client_fd ) ) {
+            free( clientF D);
         }
     }
 
-    // going for array of threads
     bool allThreadFinish = false;
 
     // Waits for all the threads to finish processing last requests
@@ -297,136 +302,148 @@ uint16_t portCheck(char *port) {
     return result;
 }
 
-void appropPlacer(char *buffer, long int bytesRead, char *requestLine, int *currentReqPos,
-    bool *endRequest, long int *buffPosition, bool *prevR_1, bool *prevN_1, bool *prevR_2) {
-    // Used to check if reached end of request
-    int i, j;
 
-    for (j = *buffPosition, i = *currentReqPos; j < bytesRead; ++j, ++i) {
-        char c = buffer[j]; // Gets char from buffer
+void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
+    while ( client_buffer->current_index < client_buffer->length ) {
 
-        // If else checking if at the end of request
-        if ((c == '\r') && !(*prevR_1) && !(*prevN_1) && !(*prevR_2)) {
-            *prevR_1 = true; // set the first \r to true
-        } else if ((c == '\n') && *prevR_1 && !(*prevN_1) && !(*prevR_2)) {
-            *prevN_1 = true;
-        } else if ((c == '\r') && *prevR_1 && *prevN_1 && !(*prevR_2)) {
-            *prevR_2 = true;
-        } else if ((c == '\n') && *prevR_1 && *prevN_1 && *prevR_2) {
-            // end of request so send a signal
-            *endRequest = true; // End of request
-            requestLine[i] = buffer[j];
-            *buffPosition = ++j; // Set the buff position
-            ++i;
-            (*prevR_1) = (*prevN_1) = (*prevR_2) = false; // set everything to false
+        char c = client_buffer.data[ client_buffer->current_index ];
+        ++( client_buffer->current_index );
+
+        ++( request->buffer.current_index );
+        ++( request->buffer.length );
+        request->buffer.data[ request->buffer.current_index ] = c;
+
+        switch ( request->current_state ) {
+            case INITIAL_STATE:
+                if ( c == '\r' ) {
+                    request->current_state = FIRST_R;
+                }
             break;
-        } else {
-            //set everything false
-            (*prevR_1) = (*prevN_1) = (*prevR_2) = false;
+
+            case FIRST_R:
+                if ( c == '\n' ) {
+                    request->current_state = FIRST_N;
+                }
+            break;
+
+            case FIRST_N:
+                if (c == '\r' ) {
+                    request->current_state = SECOND_R;
+                }
+            break;
+
+            case SECOND_R:
+                if ( c == '\n' ) {
+                    request->current_state = REQUEST_COMPLETE;
+                }
+            break;
+
+            default;
         }
-        requestLine[i] = buffer[j];
+
     }
-    *currentReqPos = i;
 }
 
 void *Worker_Request(void *arg) {
-    // Need to read from the client
-    int threadNum = *((int *) arg); // getting thread number
-    long int bytesRead = 0; // Bytes read from read()
+    int threadNum = *((int *) arg);
 
-    char fileName[1000]; // Holds file name
+    Buffer client_buffer = {
+        .data = malloc( sizeof( char ) * CLIENT_BUFFER_SIZE ),
+        .max_size = CLIENT_BUFFER_SIZE,
+        .length = 0,
+        .current_index = 0
+    };
+
+    Request request = {
+        .buffer = {
+            .data = malloc( sizeof ( char ) * REQUEST_BUFFER_SIZE ),
+            .max_size = REQUEST_BUFFER_SIZE,
+            .length = 0,
+            .current_index = 0
+        },
+        .current_state = INITIAL_STATE
+    };
+
+    char fileName[1000];
+
     Methods Meth = NO_VALID;
 
     // Important HEADERS
-    long int Content_length = 0; // Content_length
-    long int Request_ID = 0; // REquest ID
+    long int content_length = 0;
+    long int request_ID = 0;
 
-    /*Boolean*/
-    bool endRequest = false; // false if not the end of request
-    bool p1 = false;
-    bool p2 = false;
-    bool p3 = false;
-    bool clientQuit = false;
-
-    // Buffers Current Position
-    int currentReqPos = 0;
-    long int currentPosBuff = 0; // current position of buffer
-
-    //Buffers
-    char requestLine[2048]; // Holds the request line
-    char buffer[BUFF_SIZE + 1]; // Buffer size
+    bool client_closed = false;
 
     // get client descriptor from queue
-    void *getClient = NULL;
-    int clientFD;
-    while (!ev_signQuit) { // Only exits if sign quit is set
-        clientQuit = false;
-        currentReqPos = 0;
-        currentPosBuff = 0;
-        Meth = NO_VALID;
-        endRequest = false;
-        p1 = p2 = p3 = false;
+    void *client_temp = NULL; // only used to get client fd num
+    int client_fd;
 
-        if (!queue_pop(g_queueRequest, &getClient)) { // gets the client
+    while (!ev_interrupt_received) { // Only exits if sign quit is set
+
+        client_closed = false;
+        Meth = NO_VALID;
+
+        if ( !QueuePop( g_queueRequest, &client_temp ) ) {
             break;
         }
 
-        clientFD = *((int *) getClient);
-        free(getClient); // freeing the memory for the client
+        client_fd = *( ( int * ) client_temp );
+        free(client_temp); // freeing the memory for the client
 
         // need to set client to nonblocking
-        fcntl(clientFD, F_SETFL, O_NONBLOCK);
+        fcntl( client_fd, F_SETFL, O_NONBLOCK );
 
         /*Read the client for the request*/
-        while (!ev_signQuit && !endRequest) {
-            bytesRead = read(clientFD, buffer, BUFF_SIZE); // read the bytes
-            if (bytesRead < 0) { // Checks for blocking
-                if (errno == EAGAIN)
-                    continue;
-            } else if (bytesRead == 0) { // Client Closed connection
-                clientQuit = true;
+        while ( !ev_interrupt_received && ( request.current_state != REQUEST_COMPLETE ) ) {
+            int client_bytes_read = read( client_fd, client_buffer.data, client_buffer.max_size );
+
+            if ( client_bytes_read < 0 ) {
+                continue;
+            }
+            else if ( client_bytes_read == 0 ) { // Client Closed connection
+                client_closed = true;
                 break;
             }
-            //Process the read request
             else {
-                buffer[bytesRead] = '\0';
-                appropPlacer(buffer, bytesRead, requestLine, &currentReqPos, &endRequest,
-                    &currentPosBuff, &p1, &p2, &p3);
+                client_buffer.length = client_bytes_read;
+                client_buffer.current_index = 0;
+
+                AppendingClientBufferToRequest( &request, &client_buffer );
             }
         }
 
-        if (ev_signQuit) {
-            close(clientFD);
+        if ( ev_interrupt_received ) {
+            close( client_fd );
             break;
         }
 
-        if (!clientQuit) { // if client Quit
-            // Checking for responses
+        /*Checking format of request */
+        if ( !client_closed ) {
             int reqSize = currentReqPos;
             currentReqPos = 0;
             int result = request_format_RequestChecker(
-                requestLine, &currentReqPos, reqSize, fileName, &Meth);
+                request_client_buffer, &currentReqPos, reqSize, fileName, &Meth);
+
             if (result == -1) {
-                // throw invalid request
-                http_methods_StatusPrint(clientFD, BAD_REQUEST_); // print status
-                close(clientFD);
+                http_methods_StatusPrint(client_fd, BAD_REQUEST_); // print status
+                close(client_fd);
                 continue;
             }
 
             // Checking headerfields
-            result = request_format_HeaderFieldChecker(clientFD, requestLine, &currentReqPos,
+            result = request_format_HeaderFieldChecker(client_fd, request_client_buffer, &currentReqPos,
                 reqSize, &Content_length, &Request_ID, &Meth);
             if (result == -1) {
-                http_methods_StatusPrint(clientFD, BAD_REQUEST_);
-                close(clientFD);
+                http_methods_StatusPrint(client_fd, BAD_REQUEST_);
+                close(client_fd);
                 continue;
             }
 
             // check if no valid Meth
             if (Meth == NO_VALID) {
                 // Throw proper error
-                http_methods_StatusPrint(clientFD, NOT_IMP_);
-                close(clientFD);
+                http_methods_StatusPrint(client_fd, NOT_IMP_);
+                close(client_fd);
                 continue;
             }
 
@@ -435,19 +452,20 @@ void *Worker_Request(void *arg) {
 
             // PUT
             if (Meth == PUT) {
-                resultMeth = http_methods_PutReq(fileName, buffer, clientFD, &currentPosBuff,
-                    &bytesRead, Content_length, Request_ID, logFileFD);
+                resultMeth = http_methods_PutReq(fileName, client_buffer, client_fd, &currentPosBuff,
+                    &client_bytes_read
+, Content_length, Request_ID, logFileFD);
 
             }
             // GET
             else if (Meth == GET)
-                resultMeth = http_methods_GetReq(fileName, clientFD, Request_ID, logFileFD);
+                resultMeth = http_methods_GetReq(fileName, client_fd, Request_ID, logFileFD);
             // HEAD
             else
-                resultMeth = http_methods_HeadReq(fileName, clientFD, Request_ID, logFileFD);
+                resultMeth = http_methods_HeadReq(fileName, client_fd, Request_ID, logFileFD);
         }
         /*Resetting all variables to original values*/
-        close(clientFD);
+        close(client_fd);
     }
 
     g_signalThreads->finishThreads[threadNum] = true;

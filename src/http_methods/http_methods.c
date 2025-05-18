@@ -2,26 +2,22 @@
 * Created by Fabert Charles
 *
 */
-/*Included Libraries*/
-#include "HTTP-Methods/http_methods.h"
-#include "Request-Parser/request_parser.h"
 
-// For opening file
+#include "http_methods/http_methods.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <fcntl.h>
-
-// For closing file
 #include <unistd.h>
-
-// For error handling
 #include <err.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <semaphore.h>
+
+#include "request_parser/request_parser.h"
 
 #define MAX_PUT_MESSAGE_BUFF 10000
 
@@ -47,7 +43,8 @@ typedef struct URILock {
 
 
 /*Function defintions*/
-int http_methods_PutReq(char *file, char *buffer, int clientFD, long int *currentPosBuf,
+
+int HTTPutRequest(char *file, char *buffer, int clientFD, long int *currentPosBuf,
     long int *bytesRead, long int contentLength, long int reqNum, int logFD) {
 
     // creating a temp file

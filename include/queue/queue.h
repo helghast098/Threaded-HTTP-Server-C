@@ -48,12 +48,17 @@ bool QueuePop(Queue* q, void** elem);
 *   @param q:  Pointer to a queue
 *   @return void
 */
-void QueueWakeThreads(Queue* q);
 
-/** @brief Just alerts one thread waiting on pop condition
+/** @brief Just Alerts threads to wake up
 *   @param q:  Pointer to a queue
 *   @return void
 */
+void QueueWakeThreads(Queue* q);
 
-int QueueSize(Queue* q);
+/** @brief Gets current length of queue
+*   @param q: Pointer to a queue
+*   @return length (int)
+*/
+
+size_t QueueLength(Queue* q);
 #endif

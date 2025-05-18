@@ -4,22 +4,30 @@
 * Houses all functions for Http methods processing
 *
 */
-#ifndef HTTP_METHODS_H
-#define HTTP_METHODS_H
+#ifndef SIMPLEHTTP_HTTPMETHODS_H_
+#define SIMPLEHTTP_HTTPMETHODS_H_
 
-/*Libraries Included*/
-#include<stdbool.h>
-#include<stdatomic.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdatomic.h>
 
-/*Variable declarations*/
-extern volatile atomic_bool ev_signQuit; // Shared Extern vars for sign
-
+/*External Vars*/
+extern volatile atomic_bool ev_interrupt_received; // holds whether SIGINT received
 
 /*Type Definitions*/
 typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IMP_ } StatusC;
+typedef enum {PUT=0, GET, HEAD} HTTPMethod;
 
 /*Defines*/
 #define BUFF_SIZE 4096
+
+// Struct that contains different fields to execute each HTTP method
+typedef struct {
+    int client_fd;
+    char *buffer;
+    size_t current_buffer_position;
+} ClientData;
+
 
 /*Function Declarations*/
 /** @brief Does the put request for the client
@@ -33,7 +41,8 @@ typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IM
 *   @param logFD:  Server log file descriptor to show status
 *   @return 0 for success -1 for failure
 */
-int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* currentPosBuf,
+
+int HTTPutRequest(char* file, char* buffer, int clientFD, long int* currentPosBuf,
     long int* bytesRead, long int contentLength, long int ReqNum, int logFD);
 
 /** @brief Does the get request for the client
@@ -43,7 +52,7 @@ int http_methods_PutReq(char* file, char* buffer, int clientFD, long int* curren
 *   @param logFD:  Server log file descriptor to show status
 *   @return 0 for success -1 for failure
 */
-int http_methods_GetReq(char* file, int clientFD, long int ReqNum, int logFD);
+int HTTPGetRequest(char* file, int clientFD, long int ReqNum, int logFD);
 
 /** @brief Does the head request for the client
 *   @param file: The file the client wants to access
@@ -52,7 +61,7 @@ int http_methods_GetReq(char* file, int clientFD, long int ReqNum, int logFD);
 *   @param logFD:  Server log file descriptor to show status
 *   @return 0 for success -1 for failure
 */
-int http_methods_HeadReq(char* file, int clientFD, long int ReqNum, int logFD);
+int HTTPHeadRequest(char* file, int clientFD, long int ReqNum, int logFD);
 
 
 /** @brief Sends the status of the client command to the client
@@ -60,7 +69,7 @@ int http_methods_HeadReq(char* file, int clientFD, long int ReqNum, int logFD);
 *   @param status: The Status of the commands from client
 *   @return void
 */
-void http_methods_StatusPrint(int clientFD, StatusC status);
+void HTTPStatusPrint(int clientFD, StatusC status);
 
 /** @brief Locks File
 *   @param URI: File to lock

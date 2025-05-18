@@ -15,8 +15,8 @@ typedef struct NodeObj {
 typedef NodeObj *Node;
 
 typedef struct Queue {
-    int size;
-    int current_length;
+    size_t size;
+    size_t current_length;
     Node head;
     Node tail;
     pthread_mutex_t key;
@@ -142,6 +142,7 @@ bool QueuePop( Queue *q, void **elem ) {
         return false;
     }
 
+    //== START CRITICAL SECTION ==
     *elem = q->head->data; // saving the data for user
     q->head->data = NULL; // setting node data to NULL
 
@@ -162,10 +163,13 @@ bool QueuePop( Queue *q, void **elem ) {
 
     q->current_length -= 1;
 
+    //== START CRITICAL SECTION ==
+    
     pthread_mutex_unlock( &( q->key ) );
 
     return true;
 }
+
 void QueueWakeThreads(Queue* q) {
     if ( q == NULL ) {
         return;
@@ -175,8 +179,8 @@ void QueueWakeThreads(Queue* q) {
     pthread_cond_signal( &( q->pop_condition ) );
 }
 
-int QueueSize( Queue *q ) {
-    int size = 0;
+size_t QueueLength( Queue *q ) {
+    size_t size = 0;
     pthread_mutex_lock( &( q->key ) ); // LOCK MUTEX
     size = q->current_length;
     pthread_mutex_unlock( &( q->key ) );
