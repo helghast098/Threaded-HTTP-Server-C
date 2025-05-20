@@ -1,0 +1,3 @@
+add_executable(RequestParserTest test.cpp)
+target_link_libraries(RequestParserTest PRIVATE requestparser PRIVATE gtest PRIVATE gtest_main)
+gtest_discover_tests(RequestParserTest)

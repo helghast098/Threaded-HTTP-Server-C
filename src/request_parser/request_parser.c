@@ -7,10 +7,8 @@
 #include "request_parser/request_parser.h"
 
 /*Libraries Included*/
-#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-
 typedef enum {
     STATE_START=0,
     STATE_FAILURE,
@@ -30,24 +28,22 @@ typedef enum {
     STATE_VALID_REQUEST
 } RequestCheckerState;
 
-bool ValidChar( char c ) {
-    return ( ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c == ' ' ) );
+bool ValidMethodChar( char c ) {
+    return ( ( c >= 'A' && c <= 'Z' ) || ( c == ' ' ) );
 }
 
 bool ValidFileChar( char c ) {
     return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) || ( c == '.' )
-            || ( c == '_' ) || ( c == ' ' ) || ( c == '/' )
+            || ( c == '_' ) || ( c == ' ' ) || ( c == '/' );
 }
 
 int GetMethod( Request *request ) {
     char method[10]; // holds method part
-
     // Checking If method is valid
     for ( int i = 0; i < METHOD_LENGTH + 1; ++i ) {
         char c = request->buffer.data[i];
         ++( request->buffer.current_index );
-
-        if ( !ValidChar( c ) || ( i == METHOD_LENGTH && c != ' ' ) ) {
+        if ( !ValidMethodChar( c ) || ( i == METHOD_LENGTH && c != ' ' ) ) {
             return -1;
         }
         else if (c == ' ') {
@@ -79,27 +75,39 @@ int GetMethod( Request *request ) {
 int GetFilePath( Request *request ) {
     size_t start_index = request->buffer.current_index;
     int i = start_index;
-
-    while ( request->buffer.current_index < request->buffer.length && ( i - start_index  ) <= FILE_NAME_LENGTH ) {
-        char c = request->buffer.data[ i ];
+    char c;
+    char prev_char = '\0';
+    while ( ( request->buffer.current_index < request->buffer.length ) && ( ( i - start_index ) <= FILE_NAME_LENGTH ) ) {
         i = request->buffer.current_index;
+        c = request->buffer.data[ i ];
         ++( request->buffer.current_index );
+
+        if ( ( prev_char == '/' ) && ( prev_char == c ) ) {
+            return -1;
+        }
 
         if ( ( i == start_index ) ) {
             if  ( request->buffer.data[ start_index ] != '/' ) {
                 return -1;
             }
         }
-        else if ( !ValidChar( c ) ) {
+        else if ( !ValidFileChar( c ) ) {
             return -1;
         }
         else if ( c == ' ' ) {
-            request->file[ i - start_index ] = '\0';
+            request->file[ i - start_index - 1 ] = '\0';
+
+            if ( ( i - start_index ) ==  1 )
+            {
+                return -1;
+            }
             return 0;
         }
         else {
-            request->file[ i - start_index ] = c;
+            (*request).file[ i - start_index - 1] = c;
         }
+
+        prev_char = c;
     }
 
     return -1;
@@ -113,7 +121,7 @@ int CheckHTTPVersion( Request *request ) {
     int start_index = request->buffer.current_index;
     int i = start_index;
 
-    while ( i < request->buffer.length &&  ( i - start_index ) < VERSION_LENGTH ) {
+    while ( request->buffer.current_index < request->buffer.length && ( i - start_index ) < VERSION_LENGTH ) {
         i = request->buffer.current_index;
         ++ ( request->buffer.current_index );
 
@@ -128,15 +136,13 @@ int CheckHTTPVersion( Request *request ) {
         return -1;
     }
     return 0;
-
 }
 
 int RequestChecker( Request *request) {
     RequestCheckerState state = STATE_CHECK_METHOD;
     request->buffer.current_index = 0;
-    request->current_state = STATE_CHECK_METHOD;
 
-    while ( request->buffer.current_index < request->buffer.length && ( state != STATE_VALID_REQUEST ) ) {
+    while ( state != STATE_VALID_REQUEST ) {
         switch ( state ) {
             case STATE_CHECK_METHOD:
                 if ( GetMethod( request ) == -1 ) {

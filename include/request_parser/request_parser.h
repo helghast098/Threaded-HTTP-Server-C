@@ -9,11 +9,14 @@
 
 /*Libraries Included*/
 #include <stdbool.h>
+#include <stdlib.h>
 
 /*Macro Definitions*/
 #define METHOD_LENGTH  8
 #define FILE_NAME_LENGTH 1000 // Not including \0
 #define VERSION_LENGTH 8
+
+
 /*Type Definitions*/
 typedef enum { HEAD, PUT, GET, NOT_VALID } Methods;
 
@@ -36,7 +39,7 @@ typedef struct {
     Buffer buffer;
     RequestState current_state;
     Methods type; // Set by RequestChecker
-    char *file // Set by RequestChecker() please malloc the data
+    char *file; // Set by RequestChecker() please malloc the data
 } Request;
 
 /*Function Declarations*/
@@ -48,7 +51,6 @@ typedef struct {
 *   @param meth: The method (put, get, head) the client wants to do
 *   @return 0 for success, -1 on failure
 */
-
 
 int RequestChecker(Request *request);
 
@@ -62,5 +64,4 @@ int RequestChecker(Request *request);
 *   @return 0 on success, -1 on failure
 */
 int HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
-
 #endif
