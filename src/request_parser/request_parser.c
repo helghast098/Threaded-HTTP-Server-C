@@ -19,7 +19,7 @@ typedef enum {
     STATE_1_R,
     STATE_1_N,
     STATE_2_R
-} Header_State;
+} HeaderState;
 
 typedef enum {
     STATE_CHECK_METHOD=0,
@@ -28,6 +28,7 @@ typedef enum {
     STATE_VALID_REQUEST
 } RequestCheckerState;
 
+// Helper Functions
 bool ValidMethodChar( char c ) {
     return ( ( c >= 'A' && c <= 'Z' ) || ( c == ' ' ) );
 }
@@ -35,6 +36,37 @@ bool ValidMethodChar( char c ) {
 bool ValidFileChar( char c ) {
     return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) || ( c == '.' )
             || ( c == '_' ) || ( c == ' ' ) || ( c == '/' );
+}
+
+bool ValidValKeyChar( char c ) {
+    return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c == '-' ) || ( c == '_' ) || ( c >= '0' && c <= '9' );
+}
+
+void HeaderValCheck( Request *request, char *key, char *val ) {
+    // Content-Length
+    if ( strcmp( key, "Content-Length" ) == 0 ) {
+        request->headers.content_length = strtol( val, NULL, 10 );
+    }
+    // Request-Id
+    else if ( strcmp( key, "Request-Id" ) == 0 ) {
+        request->headers.request_id = strtol( val, NULL, 10 );
+    }
+    // Expect
+    else if ( strcmp( key, "Expect" ) == 0 ) {
+        // Write now accepting any size file.
+        if ( strcmp( val, "100-continue" ) == 0 ) {
+            request->headers.expect = true;
+        }
+    }
+}
+
+void RemoveLeftTrailingSpaces( Request *request ) {
+    int i = request->buffer.current_index;
+    while ( ( i < request->buffer.length ) && ( request->buffer.data[ i ] == ' ') ) {
+        ++( request->buffer.current_index );
+        i = request->buffer.current_index;
+    }
+
 }
 
 int GetMethod( Request *request ) {
@@ -77,10 +109,8 @@ int GetFilePath( Request *request ) {
     int i = start_index;
     char c;
     char prev_char = '\0';
-    while ( ( request->buffer.current_index < request->buffer.length ) && ( ( i - start_index ) <= FILE_NAME_LENGTH ) ) {
-        i = request->buffer.current_index;
+    while ( ( request->buffer.current_index < request->buffer.length ) && ( ( i - start_index ) <= ( FILE_NAME_LENGTH + 1) ) ) {
         c = request->buffer.data[ i ];
-        ++( request->buffer.current_index );
 
         if ( ( prev_char == '/' ) && ( prev_char == c ) ) {
             return -1;
@@ -101,12 +131,17 @@ int GetFilePath( Request *request ) {
             {
                 return -1;
             }
+            ++( request->buffer.current_index );
             return 0;
         }
         else {
+            if ( ( i - start_index ) == ( FILE_NAME_LENGTH + 1 ) ) {
+                return -1;
+            }
             (*request).file[ i - start_index - 1] = c;
         }
-
+        ++( request->buffer.current_index );
+        i = request->buffer.current_index;
         prev_char = c;
     }
 
@@ -122,22 +157,24 @@ int CheckHTTPVersion( Request *request ) {
     int i = start_index;
 
     while ( request->buffer.current_index < request->buffer.length && ( i - start_index ) < VERSION_LENGTH ) {
-        i = request->buffer.current_index;
-        ++ ( request->buffer.current_index );
 
         char c = request->buffer.data[ i ];
 
         http_version[ i - start_index ] = c;
+
+        ++ ( request->buffer.current_index );
+        i = request->buffer.current_index;
     }
 
-    http_version[ i - start_index + 1] = '\0';
+    http_version[ i - start_index] = '\0';
 
-    if ( strcmp( "HTTP/1.1", http_version ) != 0 ) {
+    if ( strcmp( "HTTP/1.1\r\n", http_version ) != 0 ) {
         return -1;
     }
     return 0;
 }
 
+// Main Functions
 int RequestChecker( Request *request) {
     RequestCheckerState state = STATE_CHECK_METHOD;
     request->buffer.current_index = 0;
@@ -174,144 +211,144 @@ int RequestChecker( Request *request) {
 
 /*Function Definitions*/
 
-int HeaderFieldChecker(int clientFD, char *buffer, int *currentPos, int bufferSize,
-    long int *contLength, long int *reqID, Methods *method) {
-    Header_State currentState = STATE_START;
+int HeaderFieldChecker( Request *request ) {
+    HeaderState current_state = STATE_START;
 
-    char key[1000];
-    int key_indx = 0;
+    char *key = malloc( sizeof ( char ) * KEY_AND_VAL_MAX_LENGTH );
+    size_t key_index = 0;
 
-    char val[1000];
-    int val_indx = 0;
+    char *val = malloc ( sizeof( char ) * KEY_AND_VAL_MAX_LENGTH );
+    size_t val_index = 0;
 
     bool content_length_found = false;
 
-    while (*currentPos != bufferSize) {
-        switch (currentState) {
-        case STATE_START:
-            if (buffer[*currentPos] == '\r') {
-                *currentPos += 1;
-                currentState = STATE_2_R;
-            } else if (buffer[*currentPos] == '\n') {
-                return -1;
-            } else {
-                currentState = STATE_START_KEY;
-            }
-            break;
+    while ( request->buffer.current_index < request->buffer.length ) {
+        int i = request->buffer.current_index;
 
-        case STATE_START_KEY:
-            // remove all white spaces
-            if (buffer[*currentPos] == ' ') {
-                while (*currentPos != bufferSize && buffer[*currentPos] == ' ') {
-                    *currentPos += 1;
+        switch ( current_state ) {
+            case STATE_START:
+                if ( request->buffer.data[ i ] == '\r' ) {
+                    ++ ( request->buffer.current_index );
+                    current_state = STATE_2_R;
                 }
-            } else if (buffer[*currentPos] == '\r' || buffer[*currentPos] == '\n'
-                       || buffer[*currentPos] == ':') {
-                return -1;
-            } else {
-                currentState = STATE_KEY;
-            }
-            break;
-
-        case STATE_KEY:
-            if (buffer[*currentPos] == ':') {
-                key[key_indx] = '\0';
-                *currentPos += 1;
-                currentState = STATE_START_VAL;
-            } else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\r'
-                       || buffer[*currentPos] == '\n') {
-                return -1;
-            } else {
-                key[key_indx] = buffer[*currentPos];
-                key_indx += 1;
-                *currentPos += 1;
-            }
-            break;
-
-        case STATE_START_VAL:
-            // remove all white spaces
-            if (buffer[*currentPos] == ' ') {
-                while (*currentPos != bufferSize && buffer[*currentPos] == ' ') {
-                    *currentPos += 1;
+                else if ( request->buffer.data[ i ] == '\n' ) {
+                    return -1;
                 }
-            } else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\r'
-                       || buffer[*currentPos] == '\n') {
-                return -1;
-            } else {
-                currentState = STATE_VAL;
-            }
-            break;
-
-        case STATE_VAL:
-            if (buffer[*currentPos] == '\r') {
-                val[val_indx] = '\0';
-                *currentPos += 1;
-                currentState = STATE_1_R;
-            } else if (buffer[*currentPos] == ' ' || buffer[*currentPos] == '\n') {
-                return -1;
-            } else {
-                val[val_indx] = buffer[*currentPos];
-                *currentPos += 1;
-                val_indx += 1;
-            }
-            break;
-
-        case STATE_1_R:
-            if (buffer[*currentPos] != '\n') {
-                return -1;
-            }
-
-            currentState = STATE_1_N;
-            *currentPos += 1;
-            break;
-
-        case STATE_1_N:
-
-            // Checking for key
-            if (key_indx != 0) {
-                // Content-Length
-                if (strcmp(key, "Content-Length") == 0) {
-                    *contLength = strtol(val, NULL, 10);
-                    content_length_found = true;
+                else {
+                    current_state = STATE_START_KEY;
                 }
-                // Request-Id
-                else if (strcmp(key, "Request-Id") == 0) {
-                    *reqID = strtol(val, NULL, 10);
-                }
-                // Expect
-                else if (strcmp(key, "Expect") == 0) {
-                    // Write now accepting any size file.
-                    if (strcmp(val, "100-continue") == 0) {
-                        if (write(clientFD, "HTTP/1.1 100 Continue\r\n\r\n", 29) < 0) {
-                            return -1;
-                        }
-                    }
-                }
-            }
-
-            if (buffer[*currentPos] != '\r') {
-                currentState = STATE_START_KEY;
-            } else {
-                currentState = STATE_2_R;
-                *currentPos += 1;
-            }
-
-            key_indx = 0;
-            val_indx = 0;
             break;
 
-        case STATE_2_R:
-            if (buffer[*currentPos] != '\n') {
-                return -1;
-            }
-            *currentPos += 1;
+            case STATE_START_KEY:
+                key_index = 0;
+                val_index = 0;
 
-            if (*method == PUT && !content_length_found) {
+                if ( request->buffer.data[ i ] == ' ' ) {
+                    RemoveLeftTrailingSpaces( request );
+                }
+                else if (  !ValidValKeyChar( request->buffer.data[ i ] ) ) {
+                    return -1;
+                }
+                else {
+                    key[ key_index ] = request->buffer.data[ i ];
+                    ++key_index;
+                    ++ ( request->buffer.current_index );
+                    current_state = STATE_KEY;
+                }
+            break;
+
+            case STATE_KEY:
+                if ( key_index >= KEY_AND_VAL_MAX_LENGTH ) {
+                    return -1;
+                }
+
+                if ( request->buffer.data[ i ] == ':' ) {
+                    key[ key_index ] = '\0';
+                    ++ ( request->buffer.current_index );
+                    current_state = STATE_START_VAL;
+                }
+                else if ( !ValidValKeyChar( request->buffer.data[ i ] ) ) {
+                    return -1;
+                }
+                else {
+                    key[ key_index ] = request->buffer.data[ i ];
+                    ++key_index;
+                    ++ ( request->buffer.current_index );
+                }
+            break;
+
+            case STATE_START_VAL:
+                if ( request->buffer.data[ i ] == ' ' ) {
+                    RemoveLeftTrailingSpaces( request );
+                }
+                else if (  !ValidValKeyChar( request->buffer.data[ i ] ) ) {
+                    return -1;
+                }
+                else {
+                    val[ val_index ] = request->buffer.data[ i ];
+                    ++val_index;
+                    ++ ( request->buffer.current_index );
+                    current_state = STATE_VAL;
+                }
+            break;
+
+            case STATE_VAL:
+                if (  val_index >=  KEY_AND_VAL_MAX_LENGTH ) {
+                    return -1;
+                }
+
+                if ( request->buffer.data[ i ] == '\r' ) {
+                    val[ val_index ] = '\0';
+                    ++( request->buffer.current_index );
+                    current_state = STATE_1_R;
+                }
+                else if ( !ValidValKeyChar( request->buffer.data[ i ] ) ) {
+                    return -1;
+                }
+                else {
+                    val [ val_index  ] = request->buffer.data[ i ];
+                    ++val_index;
+                    ++( request->buffer.current_index );
+                } 
+            break;
+
+            case STATE_1_R:
+                if ( request->buffer.data[ i ] != '\n' ) {
+                    return -1;
+                }
+
+                ++( request->buffer.current_index );
+                current_state = STATE_1_N;
+            break;
+
+            case STATE_1_N:
+                HeaderValCheck( request, key, val );
+
+                if ( request->buffer.data[ i ] != '\r' ) {
+                    current_state = STATE_START_KEY;
+                }
+                else {
+                    current_state = STATE_2_R;
+                    ++ ( request->buffer.current_index );
+                }
+            break;
+
+            case STATE_2_R:
+                if ( request->buffer.data[ i ] != '\n' ) {
+                    return -1;
+                }
+                
+                if ( ( request->type == PUT ) && ( request->headers.content_length == -1 ) ) {
+                    return -1;
+                }
+                ++ ( request->buffer.current_index );
+                return 0;
+
+            break;
+
+            default:
                 return -1;
-            }
-            return 0;
         }
     }
-
     return -1;
 }

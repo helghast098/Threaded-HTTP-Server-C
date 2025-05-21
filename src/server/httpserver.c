@@ -309,9 +309,9 @@ void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
         char c = client_buffer.data[ client_buffer->current_index ];
         ++( client_buffer->current_index );
 
+        request->buffer.data[ request->buffer.current_index ] = c;
         ++( request->buffer.current_index );
         ++( request->buffer.length );
-        request->buffer.data[ request->buffer.current_index ] = c;
 
         switch ( request->current_state ) {
             case INITIAL_STATE:
@@ -361,46 +361,55 @@ void *Worker_Request(void *arg) {
             .length = 0,
             .current_index = 0
         },
+
         .current_state = INITIAL_STATE
+        .type = NOT_VALID,
+
+        .headers = {
+            .content_length = 0,
+            .request_id = 0
+        }
+
+        .file = malloc( sizeof ( char ) * FILE_NAME_LENGTH )
     };
-
-    char fileName[1000];
-
-    Methods Meth = NO_VALID;
-
-    // Important HEADERS
-    long int content_length = 0;
-    long int request_ID = 0;
 
     bool client_closed = false;
 
     // get client descriptor from queue
-    void *client_temp = NULL; // only used to get client fd num
+    void *client_temp = NULL; // only used to get client fd num and 
+
     int client_fd;
 
-    while (!ev_interrupt_received) { // Only exits if sign quit is set
-
+    while ( !ev_interrupt_received ) {
+        // reseting variables
         client_closed = false;
-        Meth = NO_VALID;
+
+        request.buffer.length = 0;
+        request.current_index = 0;
+
+        request.current_state = INITIAL_STATE;
+        request.type = NOT_VALID;
+        request.headers.content_length = -1;
+        request.headers.request_id = -1;
+        request.headers.expect = false;
 
         if ( !QueuePop( g_queueRequest, &client_temp ) ) {
             break;
         }
 
         client_fd = *( ( int * ) client_temp );
-        free(client_temp); // freeing the memory for the client
+        free(client_temp);
 
         // need to set client to nonblocking
         fcntl( client_fd, F_SETFL, O_NONBLOCK );
 
-        /*Read the client for the request*/
         while ( !ev_interrupt_received && ( request.current_state != REQUEST_COMPLETE ) ) {
             int client_bytes_read = read( client_fd, client_buffer.data, client_buffer.max_size );
 
             if ( client_bytes_read < 0 ) {
                 continue;
             }
-            else if ( client_bytes_read == 0 ) { // Client Closed connection
+            else if ( client_bytes_read == 0 ) {
                 client_closed = true;
                 break;
             }
@@ -419,20 +428,16 @@ void *Worker_Request(void *arg) {
 
         /*Checking format of request */
         if ( !client_closed ) {
-            int reqSize = currentReqPos;
-            currentReqPos = 0;
-            int result = request_format_RequestChecker(
-                request_client_buffer, &currentReqPos, reqSize, fileName, &Meth);
 
-            if (result == -1) {
-                http_methods_StatusPrint(client_fd, BAD_REQUEST_); // print status
+            // Checking Request
+            if ( RequestChecker( &request ) != 0 ) {
+                http_methods_StatusPrint(client_fd, BAD_REQUEST_);
                 close(client_fd);
                 continue;
             }
 
             // Checking headerfields
-            result = request_format_HeaderFieldChecker(client_fd, request_client_buffer, &currentReqPos,
-                reqSize, &Content_length, &Request_ID, &Meth);
+            result = request_format_HeaderFieldChecker( &request );
             if (result == -1) {
                 http_methods_StatusPrint(client_fd, BAD_REQUEST_);
                 close(client_fd);

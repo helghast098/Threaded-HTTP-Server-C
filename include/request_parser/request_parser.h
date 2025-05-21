@@ -12,10 +12,10 @@
 #include <stdlib.h>
 
 /*Macro Definitions*/
-#define METHOD_LENGTH  8
+#define METHOD_LENGTH  10
 #define FILE_NAME_LENGTH 1000 // Not including \0
-#define VERSION_LENGTH 8
-
+#define VERSION_LENGTH 10
+#define KEY_AND_VAL_MAX_LENGTH 1000
 
 /*Type Definitions*/
 typedef enum { HEAD, PUT, GET, NOT_VALID } Methods;
@@ -36,10 +36,17 @@ typedef struct {
 } Buffer;
 
 typedef struct {
+    long int content_length;
+    long int request_id;
+    bool expect;
+} Headers;
+
+typedef struct {
     Buffer buffer;
-    RequestState current_state;
+    RequestState current_state; // Used to determine completion of request
     Methods type; // Set by RequestChecker
-    char *file; // Set by RequestChecker() please malloc the data
+    Headers headers; // set by header field checker
+    char *file; // Set by RequestChecker please malloc the data
 } Request;
 
 /*Function Declarations*/
@@ -63,5 +70,6 @@ int RequestChecker(Request *request);
 *   @param method: The type of request from client
 *   @return 0 on success, -1 on failure
 */
-int HeaderFieldChecker(int clientFD, char* buffer, int* currentPos, int bufferSize, long int* contLength, long int* reqID, Methods* method);
+
+int HeaderFieldChecker( Request *request );
 #endif

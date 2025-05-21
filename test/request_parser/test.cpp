@@ -21,7 +21,7 @@ std::string SetFileLength( Request *request, size_t len ) {
     for ( int i = 1; i <= len; ++i ) {
         file += "s";
     }
-    req = req + file + " HTTP/1.1";
+    req = req + file + " HTTP/1.1\r\n";
     SetRequestBuffer( request, req );
     return file;
 }
@@ -48,38 +48,38 @@ TEST( RequestParserTest, _Method) {
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
     // Testing No Method
-    SetRequestBuffer( &request, "/index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "/index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
     // Testing Invalid Characters
-    SetRequestBuffer( &request, "G@T /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "G@T /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
-    SetRequestBuffer( &request, "123 /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "123 /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
-    SetRequestBuffer( &request, "@POST /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "@POST /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
-    SetRequestBuffer( &request, "GE# /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "GE# /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
     
-    SetRequestBuffer( &request, "get /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "get /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
-    SetRequestBuffer( &request, "GeT /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "GeT /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( -1, RequestChecker( &request ) );
 
     // Testing For Valid cases
-    SetRequestBuffer( &request, "GET /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "GET /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( 0, RequestChecker( &request ) );
     EXPECT_EQ( GET, request.type );
 
-    SetRequestBuffer( &request, "PUT /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "PUT /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( 0, RequestChecker( &request ) );
     EXPECT_EQ( PUT, request.type );
 
-    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( 0, RequestChecker( &request ) );
     EXPECT_EQ( HEAD, request.type );
 
@@ -88,15 +88,15 @@ TEST( RequestParserTest, _Method) {
 
 TEST ( RequestParserTest, _URI) {
     // No uri given
-    SetRequestBuffer(  &request, "GET HTTP/1.1" );
+    SetRequestBuffer(  &request, "GET HTTP/1.1\r\n" );
     EXPECT_EQ( -2, RequestChecker( &request ) );
 
     // single /
-    SetRequestBuffer(  &request, "GET / HTTP/1.1" );
+    SetRequestBuffer(  &request, "GET / HTTP/1.1\r\n" );
     EXPECT_EQ( -2, RequestChecker( &request ) );
 
     // multiple /// in a row
-    SetRequestBuffer(  &request, "GET /hello//asdde HTTP/1.1" );
+    SetRequestBuffer(  &request, "GET /hello//asdde HTTP/1.1\r\n" );
     EXPECT_EQ( -2, RequestChecker( &request ) );
 
     // rsurpass max file length
@@ -104,7 +104,7 @@ TEST ( RequestParserTest, _URI) {
     EXPECT_EQ( -2, RequestChecker( &request ) );
 
     // Invalid File Chars
-    SetRequestBuffer(  &request, "GET /hello/%$#asdde HTTP/1.1" );
+    SetRequestBuffer(  &request, "GET /hello/%$#asdde HTTP/1.1\r\n" );
     EXPECT_EQ( -2, RequestChecker( &request ) );
 
     // Valid Files
@@ -121,24 +121,85 @@ TEST ( RequestParserTest, _URI) {
 }
 
 TEST ( RequestParserTest, _HTTP_VERSION ) {
+    
     // lowercase
-    SetRequestBuffer( &request, "HEAD /index.html http/1.1" );
+    SetRequestBuffer( &request, "HEAD /index.html http/1.1\r\n" );
     EXPECT_EQ( -3, RequestChecker( &request ) );
 
     // random letters
-    SetRequestBuffer( &request, "HEAD /index.html fasfasfafsf/1.1" );
+    SetRequestBuffer( &request, "HEAD /index.html fasfasfafsf/1.1\r\n" );
     EXPECT_EQ( -3, RequestChecker( &request ) );
 
     // removed entirely
-    SetRequestBuffer( &request, "HEAD /index.html " );
+    SetRequestBuffer( &request, "HEAD /index.html \r\n" );
     EXPECT_EQ( -3, RequestChecker( &request ) );
 
     // Different Version
-    SetRequestBuffer( &request, "HEAD /index.html http/1.12323" );
+    SetRequestBuffer( &request, "HEAD /index.html http/1.12323\r\n" );
     EXPECT_EQ( -3, RequestChecker( &request ) );
 
     // valid case
-    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1" );
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n" );
     EXPECT_EQ( 0, RequestChecker( &request ) );
+
+}
+
+TEST ( RequestParser,  _Header_Getter) {
+    // Testing no headers
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
+
+    // Testing no headers
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+
+    // Testing No Trailing whitespaces
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\nPerson:Harry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+
+    // Testing Header with trailing whitespaces for key
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n                        Person:Harry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+    
+    // Testing Headers with trailing whitespaces for key and val
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n                        Person:                        Harry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+
+    // Testing Missing :
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\nPersonHarry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
+
+    // Replacing : with ' '
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\nPerson Harry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
+
+    // Removing one set of \r\n from end
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\nPerson: Harry\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
+
+    // Removing all \r\n\r\n
+    SetRequestBuffer( &request, "HEAD /index.html HTTP/1.1\r\n Person: Harry");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
+
+    // Checking If Content Length gotten
+    SetRequestBuffer( &request, "PUT /index.html HTTP/1.1\r\nPerson: Harry\r\n  Content-Length: 10\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+    EXPECT_EQ( request.headers.content_length, 10 );
+
+    // Put with No content-length
+    request.headers.content_length = -1;
+    SetRequestBuffer( &request, "PUT /index.html HTTP/1.1\r\nPerson: Harry\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
 
 }
