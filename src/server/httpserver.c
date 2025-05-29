@@ -344,8 +344,8 @@ void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
     }
 }
 
-void *Worker_Request(void *arg) {
-    int threadNum = *((int *) arg);
+void *WorkerRequest( void *arg ) {
+    int threadNum = *( ( int * ) arg) ;
 
     Buffer client_buffer = {
         .data = malloc( sizeof( char ) * CLIENT_BUFFER_SIZE ),
@@ -398,7 +398,7 @@ void *Worker_Request(void *arg) {
         }
 
         client_fd = *( ( int * ) client_temp );
-        free(client_temp);
+        free( client_temp );
 
         // need to set client to nonblocking
         fcntl( client_fd, F_SETFL, O_NONBLOCK );
@@ -431,18 +431,21 @@ void *Worker_Request(void *arg) {
 
             // Checking Request
             if ( RequestChecker( &request ) != 0 ) {
-                http_methods_StatusPrint(client_fd, BAD_REQUEST_);
+                http_methods_StatusPrint( client_fd, BAD_REQUEST_ );
                 close(client_fd);
                 continue;
             }
 
             // Checking headerfields
             result = request_format_HeaderFieldChecker( &request );
-            if (result == -1) {
+            if ( HeaderFieldChecker( &request ) != 0 ) {
                 http_methods_StatusPrint(client_fd, BAD_REQUEST_);
                 close(client_fd);
                 continue;
             }
+
+            // Sending message
+            if )
 
             // check if no valid Meth
             if (Meth == NO_VALID) {

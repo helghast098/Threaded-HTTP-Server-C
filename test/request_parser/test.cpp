@@ -1,8 +1,10 @@
 
-#include "gtest/gtest.h"
 extern "C" {
 #include "request_parser/request_parser.h"
 }
+
+#include "gtest/gtest.h"
+
 #include <iostream>
 #include <cstring>
 
@@ -202,4 +204,12 @@ TEST ( RequestParser,  _Header_Getter) {
     EXPECT_EQ( 0, RequestChecker( &request ) );
     EXPECT_EQ( -1, HeaderFieldChecker( &request ) );
 
+    // Expect
+    request.headers.content_length = -1;
+    SetRequestBuffer( &request, "GET /index.html HTTP/1.1\r\nPerson: Harry\r\n Expect: 100-continue\r\n\r\n");
+    EXPECT_EQ( 0, RequestChecker( &request ) );
+    EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
+
+    delete request.buffer.data;
+    delete request.file;
 }

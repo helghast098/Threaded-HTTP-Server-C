@@ -1,3 +1,3 @@
-set(HEADER_LISTS "${HTTPServerP_SOURCE_DIR}/include/Queue/queue.h")
+set(HEADER_LISTS "${HTTPServerP_SOURCE_DIR}/include/queue/queue.h")
 add_library(queue STATIC queue.c ${HEADER_LISTS})
-target_include_directories(queue PRIVATE ${HTTPServerP_SOURCE_DIR}/include)
+target_include_directories(queue PUBLIC ${HTTPServerP_SOURCE_DIR}/include)

@@ -11,8 +11,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 
-/*External Vars*/
-extern volatile atomic_bool ev_interrupt_received; // holds whether SIGINT received
+
 
 /*Type Definitions*/
 typedef struct Queue Queue; //Defines the struct queue as Queue
@@ -24,7 +23,9 @@ typedef struct Queue Queue; //Defines the struct queue as Queue
 **/
 Queue* QueueNew(int size); // Creates new queue of size
 
-/** @brief Deletes queue and releases the memory
+/**
+ * @note 1st: Call QueueShutdown() 2: Wait until all threads have joined and then empty queue using QueuePop() 3: Finally call QueueDelete()
+ * @brief Deletes queue and releases the memory
 *   @param q: Address of the pointer to the queue
 *   @return void
 */
@@ -44,21 +45,27 @@ bool QueuePush(Queue* q, void* elem);
 */
 bool QueuePop(Queue* q, void** elem);
 
-/** @brief Just alerts one thread waiting on push condition
+/**
+ *  
+ * @brief Just alerts one thread waiting on push condition
 *   @param q:  Pointer to a queue
 *   @return void
 */
 
-/** @brief Just Alerts threads to wake up
+/** @brief Just Alerts threads to wake up and exit pop and push functions
 *   @param q:  Pointer to a queue
 *   @return void
 */
-void QueueWakeThreads(Queue* q);
+void QueueShutDown( Queue *q);
 
 /** @brief Gets current length of queue
 *   @param q: Pointer to a queue
 *   @return length (int)
 */
 
-size_t QueueLength(Queue* q);
+size_t QueueLength(Queue* q );
+
+size_t QueueMaxSize( Queue* q );
+
+
 #endif
