@@ -11,9 +11,9 @@ extern "C" {
 
 
 void SetRequestBuffer( Request *request, std::string s ) {
-    strcpy( request->buffer.data, s.c_str() );
-    request->buffer.current_index = 0;
-    request->buffer.length = s.length();
+    strcpy( request->request_string.data, s.c_str() );
+    request->request_string.current_index = 0;
+    request->request_string.length = s.length();
 }
 
 
@@ -29,7 +29,7 @@ std::string SetFileLength( Request *request, size_t len ) {
 }
 
 Request request = {
-        .buffer = {
+        .request_string = {
             .data = new char[3000],
             .current_index = 0,
             .length = 0,
@@ -210,6 +210,6 @@ TEST ( RequestParser,  _Header_Getter) {
     EXPECT_EQ( 0, RequestChecker( &request ) );
     EXPECT_EQ( 0, HeaderFieldChecker( &request ) );
 
-    delete request.buffer.data;
+    delete request.request_string.data;
     delete request.file;
 }

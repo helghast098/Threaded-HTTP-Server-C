@@ -5,7 +5,6 @@ extern "C"{
 #include "gtest/gtest.h"
 #include <thread>
 #include <atomic>
-// creating queue
 
 #define QUEUE_SIZE 5
 
@@ -92,7 +91,6 @@ TEST_F( QueueTest, _2Pusher2Popper ) {
     std::thread t2( f_push, q, 50000 );
     std::thread t3( f_pop, q, 25000 );
     std::thread t4( f_pop, q, 50000 );
-//
     t1.join();
     t2.join();
     //EXPECT_EQ(a, 3);

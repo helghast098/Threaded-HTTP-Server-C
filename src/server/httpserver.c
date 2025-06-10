@@ -432,20 +432,17 @@ void *WorkerRequest( void *arg ) {
             // Checking Request
             if ( RequestChecker( &request ) != 0 ) {
                 http_methods_StatusPrint( client_fd, BAD_REQUEST_ );
-                close(client_fd);
+                close( client_fd );
                 continue;
             }
 
             // Checking headerfields
-            result = request_format_HeaderFieldChecker( &request );
             if ( HeaderFieldChecker( &request ) != 0 ) {
-                http_methods_StatusPrint(client_fd, BAD_REQUEST_);
-                close(client_fd);
+                http_methods_StatusPrint( client_fd, BAD_REQUEST_ );
+                close( client_fd );
                 continue;
             }
 
-            // Sending message
-            if )
 
             // check if no valid Meth
             if (Meth == NO_VALID) {

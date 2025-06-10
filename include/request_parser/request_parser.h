@@ -42,7 +42,7 @@ typedef struct {
 } Headers;
 
 typedef struct {
-    Buffer buffer;
+    Buffer request_string;
     RequestState current_state; // Used to determine completion of request
     Methods type; // Set by RequestChecker
     Headers headers; // set by header field checker

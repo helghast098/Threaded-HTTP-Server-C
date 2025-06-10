@@ -4,6 +4,7 @@
 */
 
 #include "http_methods/http_methods.h"
+#include "request_parser/request_parser.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -16,8 +17,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <semaphore.h>
-
-#include "request_parser/request_parser.h"
 
 #define MAX_PUT_MESSAGE_BUFF 10000
 
@@ -44,97 +43,113 @@ typedef struct URILock {
 
 /*Function defintions*/
 
-int HTTPutRequest(char *file, char *buffer, int clientFD, long int *currentPosBuf,
-    long int *bytesRead, long int contentLength, long int reqNum, int logFD) {
+int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received ) {
+    char temp_file[] = "TEMPFILE-XXXXXX";
+    Buffer file_write_buffer = {
+        .data = malloc( MAX_PUT_MESSAGE_BUFF ),
+        .length = 0,
+        .max_size = MAX_PUT_MESSAGE_BUFF,
+        .current_index = 0
+    };
 
-    // creating a temp file
-    char tempFile[] = "TEMPFILE-XXXXXX";
-    int fd = mkstemp(tempFile);
+    int temp_fd = mkstemp( tempFile );
+    
+    ssize_t bytes_written; // used for output of write()
+    size_t bytes_left_to_write = request->headers.content_length;
+    size_t bytes_left_in_client_buffer = client_buffer->length - client_buffer->current_index;
 
-    // checking content_length
-    long int bytesLeftToWrite = contentLength - (*bytesRead - *currentPosBuf);
+    for ( int i = 0; ( i < bytes_left_in_client_buffer ) && ( bytes_left_to_write != 0 ); ++i ) {
+        file_write_buffer.data[ i ] = client_buffer->data[ client_buffer->current_index ];
 
-    // Variables used for interrupts
-    int bytesWritten = 0; // used to check if write actually writes
+        ++( file_write_buffer.current_index );
+        ++( file_write_buffer.length );
 
-    long int messageLen = 0;
-    char messageHolder[MAX_PUT_MESSAGE_BUFF];
+        ++( client_buffer->current_index );
 
-    // Copy buffer into messageHolder
-    for (int i = 0; i < *bytesRead; ++i) {
-        messageHolder[i] = buffer[i + *currentPosBuf];
+        --bytes_left_to_write;
     }
 
-    messageLen = *bytesRead - *currentPosBuf;
+    if ( bytes_left_to_write == 0 ) {
+        bytes_written = write(  temp_fd, file_write_buffer.data, request->headers.content_length );
+    }
+    else {
+        while ( bytes_left_to_write > 0 && !interrupt_received ) {
+            if ( file_write_buffer.length == MAX_PUT_MESSAGE_BUFF ) {
+                bytes_written = write( temp_fd, file_write_buffer.data, file_write_buffer.length );
 
-    if (bytesLeftToWrite == 0) {
-        bytesWritten = write(fd, messageHolder, messageLen);
-    } else {
-        while (bytesLeftToWrite != 0 && !ev_signQuit) {
-            if (messageLen == MAX_PUT_MESSAGE_BUFF) {
-                bytesWritten = write(fd, messageHolder, messageLen);
-                if (bytesWritten < 0) {
+                if ( bytes_written < 0) {
                     break;
                 }
-                messageLen = 0;
-            } else {
-                *bytesRead
-                    = read(clientFD, messageHolder + messageLen, MAX_PUT_MESSAGE_BUFF - messageLen);
-                if (*bytesRead <= 0)
-                    break;
-                bytesLeftToWrite -= *bytesRead;
-                messageLen += *bytesRead;
+
+                file_write_buffer.current_index = 0;
+                file_write_buffer.length = 0;
             }
+
+            int bytes_read_client = read( client_fd, file_write_buffer.data + file_write_buffer.current_index,
+                MAX_PUT_MESSAGE_BUFF - file_write_buffer.current_index )
+            
+            if ( bytes_read_client <= 0 ) {
+                break;
+            }
+
+            file_write_buffer.current_index += bytes_read_client;
+            file_write_buffer.length +=bytes_read_client;
+            --bytes_left_to_write;
         }
-        if (bytesLeftToWrite >= 0 && *bytesRead >= 0 && !ev_signQuit) {
-            bytesWritten = write(fd, messageHolder, messageLen);
-        } else {
+
+        if ( bytes_left_to_write == 0 && !interrupt_received ) {
+            bytes_written = write( temp_fd, file_write_buffer.data, file_write_buffer.length );
+        }
+        else {
             http_methods_StatusPrint(clientFD, ISE_);
             LogFilePrint(reqNum, logFD, 500, file, "PUT"); // Printing to Log
         }
     }
 
-    // Lock the File
-    int fileIndex;
-    close(fd); // closing temp file
+    int file_index;
+    close( temp_fd );
 
-    int lockResult = URILockFunc(file, PUT, &fileIndex); // locking file
+    int lockResult = URILockFunc( file, PUT, &fileIndex );
 
-    if (lockResult == 1)
-        while (sem_wait(&(e_uriLocks->files[fileIndex].fileWrite)) < 0)
-            ; // getting write lock
+    if (lockResult == 1) {
+        while ( sem_wait( &( e_uriLocks->files[ fileIndex ].fileWrite ) ) < 0 );
+    }
 
-    // need to check if file exists
-    bool fileExist = false;
+    bool file_exist = false;
 
-    if (access(file, F_OK) == 0)
-        fileExist = true;
-    else
-        fileExist = false;
-
+    if ( access( file, F_OK ) == 0 ) {
+        file_exist = true;
+    }
+    else {
+        file_exist = false;
+    }
+    
     rename(tempFile, file);
 
     /*If I cannot process the full request because of some interruption*/
-    printf("bytesLeftToWrite: %ld\n", bytesLeftToWrite);
-    if (bytesLeftToWrite != 0) {
+    if ( bytes_left_to_write != 0 ) {
         // need to clear file
-        fd = open(file, O_TRUNC | O_WRONLY);
-        close(fd);
+        fd = open( file, O_TRUNC | O_WRONLY );
+        close( fd );
     }
 
     // success and Request Printing
-    if (!fileExist) {
-        http_methods_StatusPrint(clientFD, CREATED_);
-        LogFilePrint(reqNum, logFD, 201, file, "PUT"); // Printing to Log
-        URIReleaseFunc(fileIndex, PUT);
+    if ( !file_exist ) {
+        http_methods_StatusPrint( clientFD, CREATED_ );
+        LogFilePrint( reqNum, logFD, 201, file, "PUT" ); // Printing to Log
+        URIReleaseFunc( fileIndex, PUT );
     } else {
-        http_methods_StatusPrint(clientFD, OK_);
-        LogFilePrint(reqNum, logFD, 200, file, "PUT"); // Printing to Log
-        URIReleaseFunc(fileIndex, PUT);
+        http_methods_StatusPrint( clientFD, OK_ );
+        LogFilePrint( reqNum, logFD, 200, file, "PUT" ); // Printing to Log
+        URIReleaseFunc(fileIndex, PUT );
     }
 
     return 0;
+
+
 }
+
+
 
 int http_methods_GetReq(char *file, int clientFD, long int reqNum, int logFD) {
     int fd; // file descriptor for file wanted
@@ -173,13 +188,13 @@ int http_methods_GetReq(char *file, int clientFD, long int reqNum, int logFD) {
     }
 
     /* Checking for file existence*/
-    bool fileExist = false;
+    bool file_exist = false;
     if (access(file, F_OK) == 0)
-        fileExist = true;
+        file_exist = true;
     else
-        fileExist = false;
+        file_exist = false;
 
-    if (fileExist) {
+    if (file_exist) {
         fd = open(file, O_RDONLY); // read the file
 
         // File error
@@ -328,13 +343,13 @@ int http_methods_HeadReq(char *file, int clientFD, long int reqNum, int logFD) {
     }
 
     /* Checking for file existence*/
-    bool fileExist = false;
+    bool file_exist = false;
     if (access(file, F_OK) == 0)
-        fileExist = true;
+        file_exist = true;
     else
-        fileExist = false;
+        file_exist = false;
 
-    if (fileExist) {
+    if (file_exist) {
         fd = open(file, O_RDONLY); // read the file
         if (fd < 0) // File error
         {
