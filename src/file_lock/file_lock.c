@@ -10,11 +10,11 @@
 
 typedef struct {
     int index;
-    size_t count
+    size_t threads_currently_using;
 } FileAttributes;
 
 typedef struct {
-    FileAttributes *attr;
+    FileAttributes attr;
     Link *next;
     Link *prev;
 } Link;
@@ -26,28 +26,28 @@ typedef struct {
 } List;
 
 typedef struct {
-    atomic_size_t num_readers;
+    size_t num_readers;
     sem_t read_lock;
     sem_t write_lock;
     Action action;
 } FileInfo;
 
-
 typedef struct {
     mutex_t key;
-    pthread_cond_t queue_not_empty;
 
+    // Reliant on key
+    pthread_cond_t queue_not_empty_cond;
     char *file_names[];
-    List currently_used_index;
-    Queue *free_indicies; // unsafe queue
+    List* used_index_list;
+    Queue *free_indicies_queue;
 
-    FileInfo *files; // not touched by key
-
+    // Not Reliant on key
+    FileInfo *file_info;
     size_t size;
 } FileLocks;
 
 
-// List Functions
+// List Functions PRIVATE
 
 void FreeLink( Link **link ) {
     if ( link == NULL ) {
@@ -77,7 +77,7 @@ Link *CreateLink( int index ) {
         return NULL;
     }
 
-    link->attr->count = 0;
+    link->attr->threads_currently_using = 0;
     link->attr->index = index;
 
     return link;
@@ -133,6 +133,37 @@ void ListAddLink( List *list, int index ) {
     ++( list->size );
 }
 
+List *ListNew() {
+    List * list = malloc( sizeof( List ) );
+
+    if ( list == NULL ) {
+        return;
+    }
+
+    list->size = 0;
+    list->head = NULL;
+    list->tail = NULL;
+
+    return list;
+}
+
+void ListDelete( List **list_ptr ) {
+    if ( list_ptr == NULL ) {
+        return;
+    }
+
+    Link *current_link = ( *list_ptr )->head;
+    while ( current_link != NULL ) {
+        Link *next_link = current_link->next;
+
+        free( current_link );
+
+        current_link = next_link;
+    }
+
+    free( *list_ptr );
+    *list_ptr = NULL;
+}
 
 // File Lock Functions
 FileLocks *CreateFileLocks( int size ) {
@@ -146,31 +177,42 @@ FileLocks *CreateFileLocks( int size ) {
         return NULL;
     }
 
-    sem_init( &( file_locks->key ), 0, 1 );
-
-
-    file_locks->files = malloc( sizeof( FileInfo ) * size );
-    file_locks->currently_using_file = calloc( size, sizeof( size_t ) );
     file_locks->size = size;
 
-    if ( ( file_locks->files == NULL ) || ( file_locks->currently_using_file == NULL ) ) {
-        return NULL;
-    }
+    // Initializing key and Condition
+    pthread_mutex_init( &( file_locks->key ) );
+    pthread_cond_init( &( file_locks->queue_not_empty_cond ) );
+
+    // Initializing array of file names
+    file_locks->file_names = malloc( sizeof( char * ) * size );
 
     for ( int i = 0; i < size; ++i ) {
-        file_locks->files[ i ].name = malloc( FILE_NAME_SIZE + 1 );
-        file_locks->files[ i ].num_readers = 0;
-        file_locks->files[ i ].currently_using = 0;
-        
-        sem_init( &( file_locks->files[ i ].read_lock ), 0, 1 );
-        sem_init( &( file_locks->files[ i ].write_lock ), 0, 1 );
-        file_locks->files[ i ].action = NONE;
-        
-        if ( file_locks->files[ i ].name == NULL ) {
-            // could free previous before returning
-
+        char *name = malloc( sizeof( char ) *  FILE_NAME_SIZE );
+        if ( name == NULL ) {
+            // add cleanup code
             return NULL;
         }
+        file_locks->file_names[ i ] = name;
+    }
+
+    // Initializing List
+    file_locks->currently_used_index_list = ListNew();
+    
+    // Initializing Queue
+    file_locks->free_indicies_queue = QueueNew( size );
+
+    for ( int i = 0; i < size; ++i ) {
+        QueuePush( file_locks->free_indicies_queue, &i );
+    }
+
+    // Initialzing array of file info
+    file_locks->file_info = malloc( sizeof( FileInfo ) * size );
+
+    for ( int i = 0; i < size; ++i ) {
+        file_locks->file_info[ i ].num_readers = 0;
+        sem_init( &( file_locks->file_info[ i ].read_lock ), 0, 1 );
+        sem_init( &( file_locks->file_info[ i ].write_lock ), 0, 1 );
+        file_locks->file_info[ i ].action = NONE;
     }
 
     return file_locks;
@@ -181,37 +223,55 @@ void DeleteFileLocks( FileLocks **file_locks_ptr ) {
         return;
     }
 
-    sem_destroy( &( ( *file_locks_ptr )->key ) );
-
     size_t size = ( *file_locks_ptr )->size;
 
-    for ( int i = 0; i < size; ++i ) {
-        FileInfo *file_info = ( *file_locks_ptr )->files[ i ];
+    // Destroy key and condition_queue
+    pthread_mutex_destroy( &( ( *file_locks_ptr )->key ) );
+    pthread_cond_destroy( &( ( *file_locks_ptr )->queue_not_empty_cond ) );
 
-        free( file_info->name );
+    // Free memory of file_names
+    for ( int i = 0; i < size; ++i ) {
+        free( ( *file_locks_ptr )->file_names[i] );
+    }
+
+    free( ( *file_locks_ptr )->file_names );
+
+    // Delete List
+    ListDelete( & ( ( *file_locks_ptr )->currently_used_index_list ) );
+
+    // Delete Queue
+    void *data = NULL;
+
+    while ( QueueLength( ( *file_locks_ptr)->free_indicies_queue ) ) != 0 ) {
+        QueuePop( ( *file_locks_ptr)->free_indicies_queue, &data );
+        free( data );
+    }
+
+    QueueDelete( &( ( *file_locks_ptr )->free_indicies_queue ) );
+
+    // Freeing File Attributes
+    for ( int i = 0; i < size; ++i ) {
+        FileInfo *file_info = ( *file_locks_ptr )->file_info[ i ];
+
         sem_destroy( &( file_info->read_lock ) );
         sem_destroy( &(file_info->write_lock ) );
     }
 
-    free( ( *file_locks_ptr )->files );
-
-    free( ( *file_locks_ptr )->currently_using_file );
-
-    free( file_locks_ptr );
+    free( *file_locks_ptr );
 
     *file_locks_ptr = NULL:
 }
 
-Link* LockFile ( FileLocks *file_lock, char *file, Action action ) {
+File_Link* LockFile ( FileLocks *file_lock, char *file, Action action ) {
     pthread_mutex_lock( &( file_lock->key ) );
 
     // loop through index to find files
-    Link *current_link = file_lock->currently_used_index.head
+    Link *current_link = file_lock->currently_used_index_list.head;
     bool file_found = false;
     int file_index = -1;
 
     while ( current_link != NULL ) {
-        char *current_file = file_lock->file_names[ current_link->attr->index ];
+        char *current_file = file_lock->file_names[ current_link->attr.index ];
 
         if ( strcmp( file,  current_file ) == 0 ) {
             file_found = true;
@@ -222,31 +282,32 @@ Link* LockFile ( FileLocks *file_lock, char *file, Action action ) {
     }
 
     if ( !file_found ) {
-        while ( QueueLength( file_lock->free_indicies ) == 0 ) {
-            pthread_cond_wait(  &( file_lock->queue_not_empty ), &( file_lock->key ) );
+        while ( QueueLength( file_lock->free_indicies_queue ) == 0 ) {
+            pthread_cond_wait(  &( file_lock->queue_not_empty_cond ), &( file_lock->key ) );
         }
 
         void *index = NULL;
-        QueuePop( file_lock->free_indicies, &index );
+        QueuePop( file_lock->free_indicies_queue, &index );
 
         int file_index = *( ( int * ) index );
         
+        free( index );
+
         strcpy( file_lock->file_names[ file_index ], file );
 
-        // Insert index and count to currently_used_index
-        ListAddLink( file_lock->currently_used_index, file_index );
+        // Insert index and threads_currently_using to currently_used_index_list
+        ListAddLink( file_lock->currently_used_index_list, file_index );
 
-        current_link = file_lock->currently_used_index.tail;
+        current_link = file_lock->currently_used_index_list.tail;
     }
 
-    ++( current_link->attr->count ); //increase count for thread using file
-    file_index = current_link->attr->index;
-
+    ++( current_link->attr.threads_currently_using ); //increase threads_currently_using for thread using file
+    
     pthread_mutex_unlock( &( file_lock->key ) );
 
-    // Either aquire file or read it
+    file_index = current_link->attr.index;
+    FileInfo *file_info = &( file_lock->files[ file_index ] ); // Dont need key to read file_info
 
-    FileInfo *file_info = &( file_lock->files[ file_index ] );
 
     if ( action == READ ) {
         sem_wait( &( file_info->read_lock ) );
@@ -268,32 +329,44 @@ Link* LockFile ( FileLocks *file_lock, char *file, Action action ) {
 
 }
 
-void UnlockFile( FileLocks *file_lock, Link* file_link ) {
-    FileInfo *file_info = file_lock[ file_link->attr->index ];
-
-    // Release read
-    sem_wait( &( file_info->read_lock ) );
-    --( file_info->num_readers );
-
-    if ( file_info->num_readers == 0 ) {
-        sem_post( &( file_info->write_lock ) );
+void UnlockFile( FileLocks *file_lock, File_Link *file_link_ptr ) {
+    
+    if ( ( file_lock == NULL ) || ( file_link_ptr == NULL ) ) {
+        return;
     }
 
-    sem_post( &( file_info->read_lock ) );
+    FileInfo *file_info = file_lock->file_info[ ( *file_link_ptr )->attr.index ];
+
+    // Release read
+    if ( file_info->action == READ ) {
+        sem_wait( &( file_info->read_lock ) );
+        --( file_info->num_readers );
+
+        if ( file_info->num_readers == 0 ) {
+            sem_post( &( file_info->write_lock ) );
+        }
+
+        sem_post( &( file_info->read_lock ) );
+    }
+    else if ( file_info->action == WRITE ) {
+        sem_post( &( file_info->write_lock ) )
+    }
 
     // Lock File Info
     pthread_mutex_lock( &( file_lock->key ) );
 
-    --( file_link->attr->count );
+    --( ( *file_link_ptr )->attr.threads_currently_using );
 
-    if ( file_link->attr->count == 0 ) {
+    if ( ( *file_link_ptr )->attr.threads_currently_using == 0 ) {
 
         int *index = malloc( int );
-        *index = file_link->attr->index;
+        *index = ( *file_link_ptr )->attr.index;
 
-        QueuePush( file_lock->free_indicies, index );
+        QueuePush( file_lock->free_indicies_queue, index );
 
-        ListRemoveLink( file_lock->currently_used_index, &file_link );
+        ListRemoveLink( file_lock->currently_used_index_list,  file_link_ptr );
+
+        pthread_cond_signal( &( file_lock->queue_not_empty_cond ) );
     }
 
     pthread_mutex_unlock( &( file_lock->key ) );
