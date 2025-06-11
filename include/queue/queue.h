@@ -4,6 +4,7 @@
 * Houses function declarations for multithreaded safe queue
 */
 
+// NOTE Need to define THREAD_SAFE to use thread safe queue
 #ifndef SIMPLEHTTP_QUEUE_H_
 #define SIMPLEHTTP_QUEUE_H_
 
