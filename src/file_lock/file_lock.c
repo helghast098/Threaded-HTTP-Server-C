@@ -195,7 +195,11 @@ FileLocks *CreateFileLocks( size_t size ) {
     file_locks->free_indicies_queue = QueueNew( size );
 
     for ( int i = 0; i < size; ++i ) {
-        QueuePush( file_locks->free_indicies_queue, &i );
+
+        int *index = malloc( sizeof( int ) );
+
+        *index = i;
+        QueuePush( file_locks->free_indicies_queue, index );
     }
 
     // Initialzing array of file info
