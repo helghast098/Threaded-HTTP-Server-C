@@ -253,6 +253,8 @@ void DeleteFileLocks( FileLocks **file_locks_ptr ) {
         sem_destroy( &( file_info->read_lock ) );
         sem_destroy( &(file_info->write_lock ) );
     }
+    
+    free( ( *file_locks_ptr )->file_info );
 
     free( *file_locks_ptr );
 
