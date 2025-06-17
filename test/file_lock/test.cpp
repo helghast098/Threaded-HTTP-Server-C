@@ -16,7 +16,7 @@ void lock_test( FileLocks *file_lock, const std::string &file_name ) {
     Action action = ( time_to_sleep % 2 == 0 ) ? WRITE : READ ;
     FileLink l1 = LockFile(  file_lock, file_name.c_str(), action );
 
-    //usleep( time_to_sleep );
+    usleep( time_to_sleep );
 
     UnlockFile( file_lock, &l1 );
     
@@ -71,5 +71,4 @@ TEST ( FileLockTest, _LockingMoreFilesThanQueue ) {
     }
 
     DeleteFileLocks( &file_locks );
-
 }
