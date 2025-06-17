@@ -261,7 +261,7 @@ void DeleteFileLocks( FileLocks **file_locks_ptr ) {
     *file_locks_ptr = NULL;
 }
 
-File_Link LockFile ( FileLocks *file_locks, char *file, Action action ) {
+FileLink LockFile ( FileLocks *file_locks, const char *file, Action action ) {
     pthread_mutex_lock( &( file_locks->key ) );
 
     // loop through index to find files
@@ -328,7 +328,7 @@ File_Link LockFile ( FileLocks *file_locks, char *file, Action action ) {
 
 }
 
-void UnlockFile( FileLocks *file_lock, File_Link *file_link_ptr ) {
+void UnlockFile( FileLocks *file_lock, FileLink *file_link_ptr ) {
     
     if ( ( file_lock == NULL ) || ( file_link_ptr == NULL ) ) {
         return;

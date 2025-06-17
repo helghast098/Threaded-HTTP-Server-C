@@ -8,7 +8,7 @@ typedef enum {
     NONE
 } Action;
 
-typedef struct Link * File_Link; // Returned by LockFile to be used by UnlockFile
+typedef struct Link * FileLink; // Returned by LockFile to be used by UnlockFile
 
 typedef struct FileLocks FileLocks;
 
@@ -33,7 +33,7 @@ void DeleteFileLocks( FileLocks **file_locks_ptr );
  * @param action :WRITE, READ. Option NONE will give error
  * @return none
  */
-File_Link LockFile( FileLocks *file_locks, char *file_name, Action action );
+FileLink LockFile( FileLocks *file_locks, const char *file_name, Action action );
 
 /**
  * @brief unlocks the file given the file link
@@ -41,4 +41,4 @@ File_Link LockFile( FileLocks *file_locks, char *file_name, Action action );
  * @param file_link_ptr :pointer of pointer to file_link : is set to null when ran
  * @return none 
  */
-void UnlockFile( FileLocks *file_locks, File_Link *file_link_ptr );
+void UnlockFile( FileLocks *file_locks, FileLink *file_link_ptr );
