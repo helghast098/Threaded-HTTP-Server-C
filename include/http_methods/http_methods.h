@@ -69,24 +69,7 @@ int HTTPHeadRequest(char* file, int clientFD, long int ReqNum, int logFD);
 *   @param status: The Status of the commands from client
 *   @return void
 */
-void HTTPStatusPrint(int clientFD, StatusC status);
-
-/** @brief Locks File
-*   @param URI: File to lock
-*   @param method: http method that need to lock file
-*   @param indexFile: index of file if found with lock already
-*   @return 0 for thread to go,
-            1 for thread to wait for head or get to finish from other thread,
-            2 for thread to wait for put command to finish from some thread
-*/
-int URILockFunc(char *URI, Methods method, int *indexFile);
-
-/** @brief Releases the uri lock the file
-*   @param index:  index of file to be release
-*   @param method: Method of http request
-*   @return void
-*/
-void URIReleaseFunc(int index, Methods method);
+void StatusPrint(int clientFD, StatusC status);
 
 /** @brief prints to the log file of the server
 *   @param reqNum: The number given to client request
