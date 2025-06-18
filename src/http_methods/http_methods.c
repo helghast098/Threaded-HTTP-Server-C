@@ -30,7 +30,6 @@ bool WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
         char *message_start = data.data + data.current_index;
 
         ssize_t bytes_written = write( client_fd, message_start, remain_bytes_to_write );
-w
         if ( ( bytes_written < 0 ) || interrupt ) {
             return -1
         }  
