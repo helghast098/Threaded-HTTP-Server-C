@@ -19,7 +19,6 @@ typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IM
 typedef enum {PUT=0, GET, HEAD} HTTPMethod;
 
 /*Defines*/
-#define BUFF_SIZE 4096
 
 // Struct that contains different fields to execute each HTTP method
 typedef struct {
@@ -42,7 +41,7 @@ typedef struct {
 *   @return 0 for success -1 for failure
 */
 
-int HTTPutRequest(char* file, char* buffer, int clientFD, long int* currentPosBuf,
+int PutRequest(char* file, char* buffer, int clientFD, long int* currentPosBuf,
     long int* bytesRead, long int contentLength, long int ReqNum, int logFD);
 
 /** @brief Does the get request for the client
@@ -52,7 +51,7 @@ int HTTPutRequest(char* file, char* buffer, int clientFD, long int* currentPosBu
 *   @param logFD:  Server log file descriptor to show status
 *   @return 0 for success -1 for failure
 */
-int HTTPGetRequest(char* file, int clientFD, long int ReqNum, int logFD);
+int GetRequest(char* file, int clientFD, long int ReqNum, int logFD);
 
 /** @brief Does the head request for the client
 *   @param file: The file the client wants to access
@@ -61,7 +60,7 @@ int HTTPGetRequest(char* file, int clientFD, long int ReqNum, int logFD);
 *   @param logFD:  Server log file descriptor to show status
 *   @return 0 for success -1 for failure
 */
-int HTTPHeadRequest(char* file, int clientFD, long int ReqNum, int logFD);
+int HeadRequest(char* file, int clientFD, long int ReqNum, int logFD);
 
 
 /** @brief Sends the status of the client command to the client
