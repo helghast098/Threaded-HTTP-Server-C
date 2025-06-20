@@ -1,5 +1,5 @@
 ======== UPDATING THE PROJECT. DOES NOT WORK RIGHT NOW ========
-# Simple Multithreaded Server in C by Fabert C.
+# Multithreaded Server in C by Fabert C.
 ## Cloning Repository
 To clone the repository: `https://github.com/helghast098/Simple-C-Server.git`
 ## Repository Structure
