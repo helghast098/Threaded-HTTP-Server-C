@@ -209,8 +209,6 @@ int RequestChecker( Request *request) {
     return 0;
 }
 
-/*Function Definitions*/
-
 int HeaderFieldChecker( Request *request ) {
     HeaderState current_state = STATE_START;
 

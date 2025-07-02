@@ -49,6 +49,17 @@ typedef struct {
     char *file; // Set by RequestChecker please malloc the data
 } Request;
 
+
+Buffer *CreateBuffer( size_t size );
+
+void DeleteBuffer( Buffer **buff );
+
+Request *CreateRequest( size_t size );
+
+void DeleteRequest( Request **req );
+
+
+
 /*Function Declarations*/
 /** @brief Checks if the request from the client is valid
 *   @param buffer: Holds the string of the request
