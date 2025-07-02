@@ -42,62 +42,6 @@ bool ValidValKeyChar( char c ) {
     return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c == '-' ) || ( c == '_' ) || ( c >= '0' && c <= '9' );
 }
 
-Buffer *CreateBuffer( size_t size ) {
-    Buffer *buff = calloc( 1, sizeof( Buffer ) );
-    if ( buff == NULL ) {
-        return NULL;
-    }
-
-    buff->data = malloc( sizeof( char ) * size );
-    if ( buff->data == NULL ) {
-        free( buff );
-        return NULL;
-    }
-
-    buff->max_size = size;
-
-    return buff;
-}
-
-void DeleteBuffer( Buffer **buff ) {
-    if ( buff == NULL) {
-        return;
-    }
-
-    free( *buff->data );
-    free( *buff );
-    *buff = NULL;
-}
-
-Request *CreateRequest( size_t size ) {
-    Request *req = calloc( 1, sizeof( Request ) );
-    if ( req == NULL) {
-        return NULL;
-    }
-    req->request_string = CreateBuffer( size );
-
-    if ( req->request_string == NULL) {
-        free( req );
-        return NULL;
-    }
-
-    req->file = malloc( sizeof( char ) * FILE_NAME_LENGTH );
-
-    if ( req->file == NULL ) {
-        DeleteBuffer( req->request_string );
-        free( req );
-        return NULL;
-    }
-    return req;
-}
-
-void DeleteRequest( Request **req ) {
-    DeleteBuffer( *req->request_string );
-    free( *req->file );
-    free( *req );
-    *req = NULL;
-}
-
 void HeaderValCheck( Request *request, char *key, char *val ) {
     // Content-Length
     if ( strcmp( key, "Content-Length" ) == 0 ) {
@@ -231,6 +175,63 @@ int CheckHTTPVersion( Request *request ) {
 }
 
 // Main Functions
+Buffer *CreateBuffer( size_t size ) {
+    Buffer *buff = calloc( 1, sizeof( Buffer ) );
+    if ( buff == NULL ) {
+        return NULL;
+    }
+
+    buff->data = malloc( sizeof( char ) * size );
+    if ( buff->data == NULL ) {
+        free( buff );
+        return NULL;
+    }
+
+    buff->max_size = size;
+
+    return buff;
+}
+
+void DeleteBuffer( Buffer **buff ) {
+    if ( buff == NULL) {
+        return;
+    }
+
+    free( *buff->data );
+    free( *buff );
+    *buff = NULL;
+}
+
+Request *CreateRequest( size_t size ) {
+    Request *req = calloc( 1, sizeof( Request ) );
+    if ( req == NULL) {
+        return NULL;
+    }
+    req->request_string = CreateBuffer( size );
+
+    if ( req->request_string == NULL) {
+        free( req );
+        return NULL;
+    }
+
+    req->file = malloc( sizeof( char ) * FILE_NAME_LENGTH );
+
+    if ( req->file == NULL ) {
+        DeleteBuffer( req->request_string );
+        free( req );
+        return NULL;
+    }
+    return req;
+}
+
+void DeleteRequest( Request **req ) {
+    DeleteBuffer( *req->request_string );
+    free( *req->file );
+    free( *req );
+    *req = NULL;
+}
+
+
 int RequestChecker( Request *request) {
     RequestCheckerState state = STATE_CHECK_METHOD;
     request->request_string.current_index = 0;
