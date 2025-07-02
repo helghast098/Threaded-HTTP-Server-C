@@ -5,7 +5,6 @@
 
 #include "http_methods/http_methods.h"
 #include "request_parser/request_parser.h"
-#include "file_lock/file_lock.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -24,18 +23,17 @@
 
 
 // Helper Functions
-bool WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
-    while ( data.current_index < data.length ) {
-        size_t remain_bytes_to_write = data.length - data.current_index;
-        char *message_start = data.data + data.current_index;
+int WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
+    while ( data->current_index < data->length ) {
+        size_t remain_bytes_to_write = data->length - data->current_index;
+        char *message_start = data->data + data->current_index;
 
         ssize_t bytes_written = write( client_fd, message_start, remain_bytes_to_write );
-w
         if ( ( bytes_written < 0 ) || interrupt ) {
-            return -1
+            return -1;
         }  
 
-        data.current_index += bytes_written;
+        data->current_index += bytes_written;
     }
     return 0;
 }
@@ -43,18 +41,19 @@ w
 // Function Definitions
 int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
     char temp_file[] = "TEMPFILE-XXXXXX";
+    int temp_fd = mkstemp( temp_file );
+
     Buffer file_write_buffer = {
         .data = malloc( MAX_PUT_MESSAGE_BUFF ),
         .length = 0,
         .max_size = MAX_PUT_MESSAGE_BUFF,
         .current_index = 0
     };
-
-    int temp_fd = mkstemp( tempFile );
     
     ssize_t bytes_written; // used for output of write()
     size_t bytes_left_to_write = request->headers.content_length;
     size_t bytes_left_in_client_buffer = client_buffer->length - client_buffer->current_index;
+
 
     for ( int i = 0; ( i < bytes_left_in_client_buffer ) && ( bytes_left_to_write != 0 ); ++i ) {
         file_write_buffer.data[ i ] = client_buffer->data[ client_buffer->current_index ];
@@ -66,15 +65,15 @@ int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_
 
         --bytes_left_to_write;
     }
-
+    
     if ( bytes_left_to_write == 0 ) {
         bytes_written = write(  temp_fd, file_write_buffer.data, request->headers.content_length );
     }
     else {
-        while ( bytes_left_to_write > 0 && !interrupt_received ) {
+        while ( ( bytes_left_to_write > 0 ) && !interrupt_received ) {
+            // write to file
             if ( file_write_buffer.length == MAX_PUT_MESSAGE_BUFF ) {
                 bytes_written = write( temp_fd, file_write_buffer.data, file_write_buffer.length );
-
                 if ( bytes_written < 0) {
                     break;
                 }
@@ -82,9 +81,9 @@ int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_
                 file_write_buffer.current_index = 0;
                 file_write_buffer.length = 0;
             }
-
+            // read from client
             int bytes_read_client = read( client_fd, file_write_buffer.data + file_write_buffer.current_index,
-                MAX_PUT_MESSAGE_BUFF - file_write_buffer.current_index )
+                MAX_PUT_MESSAGE_BUFF - file_write_buffer.current_index );
             
             if ( bytes_read_client <= 0 ) {
                 break;
@@ -100,37 +99,30 @@ int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_
         }
         else {
             StatusPrint(client_fd, ISE_);
-            LogFilePrint(request_num, log_fd, 500, file, "PUT"); // Printing to Log
+            LogFilePrint(request->headers.request_id, log_fd, 500, request->file, "PUT"); // Printing to Log
         }
     }
-
-    int file_index;
     close( temp_fd );
 
     FileLink acquired_file_lock = LockFile( file_locks, request->file, WRITE );
 
     // CRITICAL SECTION
 
-    bool file_exist = false;
-
-    if ( access( request->file, F_OK ) == 0 ) {
-        file_exist = true;
-    }
-    else {
-        file_exist = false;
-    }
     
     rename( temp_file, request->file );
 
     /*If I cannot process the full request because of some interruption*/
     if ( bytes_left_to_write != 0 ) {
         // clear file
-        fd = open( file, O_TRUNC | O_WRONLY );
+        int fd = open( request->file, O_TRUNC | O_WRONLY );
         close( fd );
+        
+        free( file_write_buffer.data );
+        return -1;
     }
 
     // success and Request Printing
-    if ( !file_exist ) {
+    if ( access( request->file, F_OK ) != 0 ) {
         StatusPrint( client_fd, CREATED_ );
         LogFilePrint( request->headers.request_id, log_fd, 201, request->file, "PUT" ); // Printing to Log
     } else {
@@ -144,15 +136,13 @@ int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_
     return 0;
 }
 
-int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
+int GetRequest( Request *request , Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
     int fd;
     struct stat file_stats;
-    int bytesWritten = 0; // used to check if write actually writes
-    unsigned long bytesContinuation = 0; // If only a partial amount of bytes written
 
     // Acquire URI Lock for file
 
-    FileLink *acquired_file_lock = LockFile( file_locks, request->file, READ );
+    FileLink acquired_file_lock = LockFile( file_locks, request->file, READ );
 
     // CRITICAL SECTION
 
@@ -169,14 +159,14 @@ int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_boo
                 close( fd );
             }
             else {
-                error_file = false;
+                error_with_file = false;
             }
         }
 
         if ( error_with_file ) {
             UnlockFile( file_locks, &acquired_file_lock );
             StatusPrint( client_fd, ISE_ );
-            LogFilePrint( request->headers.request_id , log_fd, 500, file, "GET" );
+            LogFilePrint( request->headers.request_id , log_fd, 500, request->file, "GET" );
             return -1;
         }
     }
@@ -191,18 +181,18 @@ int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_boo
 
     // send content length to client
     Buffer message_str = {
-        .data = malloc( sizeof( char ) * 512 );
+        .data = malloc( sizeof( char ) * 512 ),
         .current_index = 0,
         .length = 0,
         .max_size = 512
     };
 
-    sprintf( message_str.data , "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", fileStat.st_size );
+    sprintf( message_str.data , "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", file_stats.st_size );
     message_str.length = strlen( message_str.data );
 
-    if ( WriteToClient( message_str, client_fd, interrupt_received ) == -1 ) {
+    if ( WriteToClient( &message_str, client_fd, interrupt_received ) == -1 ) {
         free( message_str.data );
-        close( fd )
+        close( fd );
         UnlockFile( file_locks, &acquired_file_lock );
         StatusPrint(client_fd, ISE_);
         LogFilePrint( request->headers.request_id, log_fd, 500, request->file, "GET" );
@@ -215,14 +205,14 @@ int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_boo
         .data = malloc( sizeof( char ) *  MAX_GET_MESSAGE_BUFFER ),
         .current_index = 0,
         .length = 0,
-        .max_size = NAX_GET_MESSAGE_BUFFER
+        .max_size = MAX_GET_MESSAGE_BUFFER
     };
 
-    size_t bytes_needed_to_send = fileStat.st_size;
+    size_t bytes_needed_to_send = file_stats.st_size;
 
     bool error = false;
 
-    while ( bytes_need_to_send != 0 ) {
+    while ( bytes_needed_to_send != 0 ) {
         // reading from file
         buffer.current_index = 0;
         buffer.length = 0;
@@ -235,12 +225,12 @@ int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_boo
         buffer.length = bytes_read_from_file;
 
         // sending data to client
-        if ( WriteToClient( buffer, client_fd, interrupt_received ) == -1 ) {
+        if ( WriteToClient( &buffer, client_fd, interrupt_received ) == -1 ) {
             error = true;
             break;
         }
 
-        bytes_need_to_send -= bytes_read_from_file;
+        bytes_needed_to_send -= bytes_read_from_file;
     }
 
     if ( error ) {
@@ -252,16 +242,17 @@ int GetRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_boo
 
     close(fd);
     UnlockFile( file_locks, &acquired_file_lock );
-
+c asdf  a as
     // END CRITICAL SECTION
     LogFilePrint( request->headers.request_id, log_fd, 200, request->file, "GET" );
     free( buffer.data );
     return 0;
 }
 
-int HeadRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
+int HeadRequest( Request *request , Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
     struct stat file_stats;
-    FileLink acquired_file_lock = LockFile( file_locks, request->file );
+    int fd;
+    FileLink acquired_file_lock = LockFile( file_locks, request->file, READ );
 
     // START CRITICAL SECTION
 
@@ -278,14 +269,14 @@ int HeadRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_bo
                 close( fd );
             }
             else {
-                error_file = false;
+                error_with_file = false;
             }
         }
 
         if ( error_with_file ) {
             UnlockFile( file_locks, &acquired_file_lock );
             StatusPrint( client_fd, ISE_ );
-            LogFilePrint( request->headers.request_id , log_fd, 500, file, "HEAD" );
+            LogFilePrint( request->headers.request_id , log_fd, 500, request->file, "HEAD" );
             return -1;
         }
     }
@@ -300,19 +291,19 @@ int HeadRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_bo
 
     // read the data from file
     Buffer message_str = {
-        .data = malloc( sizeof( char ) * 512 );
+        .data = malloc( sizeof( char ) * 512 ),
         .current_index = 0,
         .length = 0,
         .max_size = 512
     };
 
     // send content length to client
-    sprintf( message_str.data , "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", fileStat.st_size );
+    sprintf( message_str.data , "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", file_stats.st_size );
     message_str.length = strlen( message_str.data );
 
-    if ( WriteToClient( message_str, client_fd, interrupt_received ) == -1 ) {
+    if ( WriteToClient( &message_str, client_fd, interrupt_received ) == -1 ) {
         free( message_str.data );
-        close( fd )
+        close( fd );
         UnlockFile( file_locks, &acquired_file_lock );
         StatusPrint(client_fd, ISE_);
         LogFilePrint( request->headers.request_id, log_fd, 500, request->file, "GET" );
@@ -323,7 +314,7 @@ int HeadRequest( Request *request , Buffer *client_buffer, int log_fd, atomic_bo
 
     // END CRITICAL SECTION
     UnlockFile( file_locks, &acquired_file_lock );
-    LogFilePrint( request->headers.request_id, log_fd, 200, file, "HEAD" );
+    LogFilePrint( request->headers.request_id, log_fd, 200, request->file, "HEAD" );
     free( message_str.data );
     return 0;
 }

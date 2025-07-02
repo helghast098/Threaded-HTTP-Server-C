@@ -7,16 +7,17 @@
 #ifndef SIMPLEHTTP_HTTPMETHODS_H_
 #define SIMPLEHTTP_HTTPMETHODS_H_
 
+#include "request_parser/request_parser.h" // for the Http Methods
+#include "file_lock/file_lock.h"
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdatomic.h>
 
 /*External Vars*/
-extern volatile atomic_bool ev_interrupt_received; // holds whether SIGINT received
 
 /*Type Definitions*/
 typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IMP_ } StatusC;
-typedef enum {PUT=0, GET, HEAD} HTTPMethod;
 
 /*Defines*/
 
@@ -30,45 +31,38 @@ typedef struct {
 
 /*Function Declarations*/
 /** @brief Does the put request for the client
-*   @param file: The file the client wants to access
-*   @param buffer: Holds the client message to put to the file
-*   @param clientFD: The file descriptor for the client
-*   @param currentPosBuf: Current position of buffer
-*   @param bytesRead: The number of bytes read from read method
-*   @param contentLength: Length of the content to put in file
-*   @param ReqNum:  Number of request from client (used in log file of server)
-*   @param logFD:  Server log file descriptor to show status
+*   @param request: info of the request
+*   @param client_buffer: client buffer which client_fd writes to
+*   @param client_fd: The file descriptor for the client
+*   @param log_fd: server log file descriptor
+*   @param interrupt_received: Checks if server received shutdown command
+*   @param file_locks: file locks to the files used in server
 *   @return 0 for success -1 for failure
 */
 
-int PutRequest(char* file, char* buffer, int clientFD, long int* currentPosBuf,
-    long int* bytesRead, long int contentLength, long int ReqNum, int logFD);
+int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks );
 
-/** @brief Does the get request for the client
-*   @param file: The file the client wants to access
-*   @param clientFD: The file descriptor for the client
-*   @param ReqNum:  Number of request from client (used in log file of server)
-*   @param logFD:  Server log file descriptor to show status
+/** @brief Does the put request for the client
+*   @param request: info of the request
+*   @param client_buffer: client buffer which client_fd writes to
+*   @param client_fd: The file descriptor for the client
+*   @param log_fd: server log file descriptor
+*   @param interrupt_received: Checks if server received shutdown command
+*   @param file_locks: file locks to the files used in server
 *   @return 0 for success -1 for failure
 */
-int GetRequest(char* file, int clientFD, long int ReqNum, int logFD);
+int GetRequest( Request *request , Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks );
 
-/** @brief Does the head request for the client
-*   @param file: The file the client wants to access
-*   @param clientFD: The file descriptor for the client
-*   @param ReqNum:  Number of request from client (used in log file of server)
-*   @param logFD:  Server log file descriptor to show status
+/** @brief Does the put request for the client
+*   @param request: info of the request
+*   @param client_buffer: client buffer which client_fd writes to
+*   @param client_fd: The file descriptor for the client
+*   @param log_fd: server log file descriptor
+*   @param interrupt_received: Checks if server received shutdown command
+*   @param file_locks: file locks to the files used in server
 *   @return 0 for success -1 for failure
 */
-int HeadRequest(char* file, int clientFD, long int ReqNum, int logFD);
-
-
-/** @brief Sends the status of the client command to the client
-*   @param clientFD: File descriptor for client
-*   @param status: The Status of the commands from client
-*   @return void
-*/
-void StatusPrint(int clientFD, StatusC status);
+int HeadRequest( Request *request , Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks );
 
 /** @brief prints to the log file of the server
 *   @param reqNum: The number given to client request
@@ -78,4 +72,12 @@ void StatusPrint(int clientFD, StatusC status);
 *   @return void
 */
 void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char *method);
+
+/** @brief Sends the status of the client command to the client
+*   @param clientFD: File descriptor for client
+*   @param status: The Status of the commands from client
+*   @return void
+*/
+void StatusPrint(int clientFD, StatusC status);
+
 #endif

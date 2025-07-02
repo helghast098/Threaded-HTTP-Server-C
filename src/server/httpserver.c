@@ -4,16 +4,19 @@
 * HTTP SERVER File
 */
 
-/*Included Libraries*/
-// For opening file
+
+// Included Custom Libraries
+#include "bind/bind.h"
+#include "file_lock/file_lock.h"
+#include "http_methods/http_methods.h"
+#include "server/httpserver.h"
+#include "queue/queue.h"
+#include "request_parser/request_parser.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
-// For closing file
 #include <unistd.h>
-
-// For error handling
 #include <err.h>
 #include <errno.h>
 #include <string.h>
@@ -22,133 +25,50 @@
 #include <sys/socket.h>
 #include <stdbool.h>
 #include <signal.h>
-
-// For Threads and atomic
 #include <stdatomic.h>
 #include <pthread.h>
 #include <semaphore.h>
 
-// Included Custom Libraries
-#include "Bind/bind.h"
-#include "HTTP-Methods/http_methods.h"
-#include "HTTP-Server/httpserver.h"
-#include "Queue/queue.h"
-#include "Request-Parser/request_parser.h"
+SignalThreads *g_SignalThreads; // pointer to signal threads
 
-
-/*Global Vars*/
-URILock *e_uriLocks; // pointer to the uri locks
-
-signalThreads *g_signalThreads; // pointer to signal threads
-
-/*Type Definitions*/
-#define REQUEST_BUFFER_SIZE 2048
-#define CLIENT_BUFFER_SIZE 1024
-
-// Struct for holding a single uri
-typedef struct LockFile {
-    int numThreads; // Number of threads that are present here
-    char URI[100];
-    int numReaders; // How many threads are reading the file
-    sem_t numReadKey; // Key for readers to read file
-    sem_t fileWrite; // semaphore for file write
-} LockFile;
-
-// Struct to hold the list of uris
-typedef struct URILock {
-    int size;
-    sem_t changeList;
-    LockFile *files;
-} URILock;
-
-// Struct to signal threads to finissh
-typedef struct signalThreads {
+typedef struct SignalThreads {
     int size;
     atomic_bool *finishThreads; // Holds an array for finished threads
-} signalThreads;
+} SignalThreads;
 
+volatile atomic_bool ev_interrupt_received = false;
 
-// Enum to show the current state of the request
-// A consecutive /r/n/r/n will signify the end of a request
+int log_file_fd = STDERR_FILENO; // default logFile Descriptor
 
+void FinishedThreadsInit( int number_of_thr eads);
 
-//Flag for interrupt
-volatile atomic_bool ev_interrupt_received
-    = false; // If terminate signal happens, quit. Also, atomic variable
+void FinishedThreadsInitFree();
 
-// Queue for holding client_fd
-queue_t *g_queueRequest;
+void *WorkerRequest( void *arg );
 
-// Holds logfile FD
-int logFileFD = STDERR_FILENO; // default logFile Descriptor
-
-/*Function Declarations*/
-
-/** @brief Initializes URILocks
-*   @param numThread:  The number of thread available
-*   @return void
-*/
-void URILockInit(int numThreads);
-
-/** @brief cleans up URILock initialized in URILockInit
-*   @return Void
-*/
-void FreeUriLocks();
-
-/**  @brief Initializes array which holds if thread is finished and ended
-*    @param numThread:  How many thread available to process requests
-*    @return void
-*/
-void FinishThreadInit(int numThreads);
-
-/** @brief Cleans up array initialized in FinishedThreadInit
-*   @return void
-*/
-void FinishThreadInitFree();
-
-/**  @brief Function in which threads will process requests from clients
-*    @param arg:
-*/
-void *Worker_Request(void *arg);
-
-/** @brief Checks if the optional arguments are valid
-*   @param l_flag:  True if l optional argument available
-*   @param t_flag:  True if t optional argument available
-*   @param argc: User input count
-*   @param argv:  User input values
-*   @param numThreads: Number of threads
-*   @param log_file:  Where the server log is held
-*   @return void
-*/
 void OptionalArgumentChecker(
-    bool *l_flag, bool *t_flag, int argc, char *argv[], int *numThreads, char *log_file);
+    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file);
 
-//Signal Interrupt
-/**  @brief Handles signal interrupt
-*    @param signum:  signal number
-*    @return void
-*/
-void sig_Interrupt(int signum) {
-    printf("Start Signal Handling\n");
+void SignalInterrupt(int signum) {
     if (signum == SIGTERM) {
-        ev_interrupt_received = true; // set sign quit to true
+        ev_interrupt_received = true;
     }
 }
 
+
 int main(int argc, char *argv[]) {
+    char log_file[ 1000 ]; // Holds log file
+
     // Setting up interrupt struct
     struct sigaction interrup_sign;
     memset(&interrup_sign, 0, sizeof(interrup_sign));
-    interrup_sign.sa_handler = sig_Interrupt;
+    interrup_sign.sa_handler = SignalInterrupt;
     sigaction(SIGTERM, &interrup_sign, NULL);
-
-    // Checking for user arguments
-    char log_file[1000]; // Holds log file file
 
     //Flags for optional arguments
     bool l_flag = false;
     bool t_flag = false;
-    int numThreads = 4; // default # of threads
+    int number_of_threads = 4;
 
     // If there are no arguments
     if (argc < 2) {
@@ -157,73 +77,67 @@ int main(int argc, char *argv[]) {
     }
 
     // Checking optional arguments
-    OptionalArgumentChecker(&l_flag, &t_flag, argc, argv, &numThreads, log_file);
+    OptionalArgumentChecker( &l_flag, &t_flag, argc, argv, &number_of_threads, log_file );
+
+    if ( l_flag ) {
+        if ( access( log_file, F_OK ) == 0 ) {
+            log_file_fd = open(log_file, O_TRUNC | O_WRONLY);
+
+            if (log_file_fd < 0) {
+                warnx("logfile opener: %s", strerror(errno));
+                exit(1);
+            }
+        }
+        else {
+            log_file_fd = open( log_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR );
+            
+            if ( log_file_fd < 0 ) {
+                warnx("logfile opener: %s", strerror(errno));
+                exit(1);
+            }
+        }
+    }
 
     // Getting Port Number
     // First Checking there is an actual number available
-    if (optind == argc) {
-        warnx("No port given: ./httpserver [-t threads] [-l logfile] <port>");
-        exit(1);
+    if ( optind == argc ) {
+        warnx( "No port given: ./httpserver [-t threads] [-l logfile] <port>" );
+        exit( 1 );
     }
 
-    uint16_t portNum = portCheck(argv[optind]); // Checking for valid port number
-    int socketFD = create_listen_socket(portNum);
-    // Exit if not valid
-    if (socketFD < 0) {
-        warnx("bind: %s", strerror(errno));
-        exit(1);
+    uint16_t port_num = StrToPort( argv[ optind ] );
+    int socket_fd = create_listen_socket( port_num );
+
+    if ( socket_fd < 0 ) {
+        warnx( "bind: %s", strerror( errno ) );
+        exit( 1 );
     }
 
     // Initializing queue for requests
-    g_queueRequest = queue_new(numThreads); // creates a queue size of threads
+    Queue *client_queue = QueueNew( number_of_threads ); // creates a queue size of threads
 
-    // Opening log file if found
-    if (l_flag) {
-        // If the File Exists
-        if (access(log_file, F_OK) == 0) { // Checking if file exists
-            logFileFD = open(log_file, O_TRUNC | O_WRONLY); // getting logFileFD
+    // Initializing file locks
+    FileLocks *file_locks = CreateFileLocks( number_of_threads );
 
-            // File error
-            if (logFileFD < 0) {
-                warnx("logfile opener: %s", strerror(errno));
-                exit(1);
-            }
-        }
-        // If the file doesn't exitst
-        else {
-            logFileFD = open(log_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    // Setting up threads
+    FinishedThreadsInit( number_of_threads );
 
-            // File error
-            if (logFileFD < 0) {
-                warnx("logfile opener: %s", strerror(errno));
-                exit(1);
-            }
-        }
+    pthread_t worker_threads[number_of_threads];
+
+    int thread_numbers[ number_of_threads ];
+
+    for ( int i = 0; i < number_of_threads; ++i ) {
+        thread_numbers[ i ] = i;
     }
 
-    URILockInit(numThreads);
-
-    FinishThreadInit(numThreads);
-
-    pthread_t worker_threads[numThreads]; // create numThreads workers
-
-    int threadNumber[numThreads];
-
-    for ( int i = 0; i < numThreads; ++i ) {
-        threadNumber[i] = i;
+    for ( int i = 0; i < number_of_threads; ++i ) {
+        void *ThreadArg = &( thread_numbers[i] ); // Giving each thread an identifier
+        pthread_create( worker_threads + i, NULL, WorkerRequest, ThreadArg );
     }
-
-    for ( int i = 0; i < numThreads; ++i ) {
-        void *ThreadArg = &(threadNumber[i]); // Giving each thread an identifier
-        pthread_create(worker_threads + i, NULL, Worker_Request, ThreadArg);
-    }
-
-    // Processing Client
-    printf("Starting Server\n");
 
     while ( !ev_interrupt_received ) {
         int *client_fd = malloc( sizeof(int) );
-        *( client_fd ) = accept( socketFD, NULL, NULL ); // waiting for connections
+        *( client_fd ) = accept( socket_fd, NULL, NULL ); // waiting for connections
 
         /*If accept produces an error*/
         if ( ( *client_fd ) < 0 ) {
@@ -238,57 +152,53 @@ int main(int argc, char *argv[]) {
         }
 
         // if client_fd not put in queue because sigterm
-        if ( !queue_push( g_queueRequest, client_fd ) ) {
-            free( clientF D);
+        if ( !QueuePush(  client_queue , client_fd ) ) {
+            free( client_fd );
         }
     }
 
-    bool allThreadFinish = false;
-
-    // Waits for all the threads to finish processing last requests
-    printf("Handling closing threads here\n");
+    bool all_threads_finished = false;
+    QueueShutDown( client_queue );
 
     // Sending to command to queue to wake up threads
-    queue_condition_pop(g_queueRequest);
-    queue_condition_push(g_queueRequest);
-    while (!allThreadFinish) {
+    while (!all_threads_finished) {
         int numFin = 0; // Shows how many threads finished
-        for (int i = 0; i < g_signalThreads->size; ++i) {
-            if (g_signalThreads->finishThreads[i]) {
+        for (int i = 0; i < g_SignalThreads->size; ++i) {
+            if (g_SignalThreads->finishThreads[i]) {
                 ++numFin; // Increment counter for finish
             }
         }
 
         // Checking numFin
-        if (numFin == g_signalThreads->size)
-            allThreadFinish = true; // If all threads finish set to notify
+        if (numFin == g_SignalThreads->size)
+            all_threads_finished = true; // If all threads finish set to notify
         else
             usleep(100); // sleep for 100 microseconds
     }
 
     // Joining threads
-    for (int i = 0; i < numThreads; ++i) {
+    for (int i = 0; i < number_of_threads; ++i) {
         pthread_join(worker_threads[i], NULL);
     }
 
     printf("End of Handling Requests\n");
 
     // Removing queue structs present
-    while (queue_size(g_queueRequest) != 0) {
-        void *strhere;
-        queue_pop(g_queueRequest, &strhere);
-        free(strhere);
+    while (queue_size( client_queue ) != 0) {
+        void *garbage_val;
+        QueuePop( client_queue , &garbage_val );
+        free( garabge_val );
     }
 
-    queue_delete(&g_queueRequest);
-    FreeUriLocks();
-    FinishThreadInitFree();
-    fsync(logFileFD); //** Freeing memory for URI lock
-    close(logFileFD); // Close log file
+    QueueDelete( &client_queeu );
+    FinishedThreadsInitFree();
+    DeleteFileLocks( &file_locks );
+    fsync( log_file_fd ); //** Freeing memory for URI lock
+    close( log_file_fd ); // Close log file
     return 0;
 }
 
-uint16_t portCheck(char *port) {
+uint16_t StrToPort(char *port) {
     // Checking values of char
     for (unsigned int i = 0; port[i] != '\0'; ++i) {
         if (port[i] < '0' || port[i] > '9') {
@@ -301,7 +211,6 @@ uint16_t portCheck(char *port) {
     uint16_t result = strtol(port, NULL, 10);
     return result;
 }
-
 
 void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
     while ( client_buffer->current_index < client_buffer->length ) {
@@ -386,14 +295,13 @@ void *WorkerRequest( void *arg ) {
 
         request.buffer.length = 0;
         request.current_index = 0;
-
         request.current_state = INITIAL_STATE;
         request.type = NOT_VALID;
         request.headers.content_length = -1;
         request.headers.request_id = -1;
         request.headers.expect = false;
 
-        if ( !QueuePop( g_queueRequest, &client_temp ) ) {
+        if ( !QueuePop(  client_queue , &client_temp ) ) {
             break;
         }
 
@@ -416,7 +324,6 @@ void *WorkerRequest( void *arg ) {
             else {
                 client_buffer.length = client_bytes_read;
                 client_buffer.current_index = 0;
-
                 AppendingClientBufferToRequest( &request, &client_buffer );
             }
         }
@@ -459,68 +366,40 @@ void *WorkerRequest( void *arg ) {
             if (Meth == PUT) {
                 resultMeth = http_methods_PutReq(fileName, client_buffer, client_fd, &currentPosBuff,
                     &client_bytes_read
-, Content_length, Request_ID, logFileFD);
+, Content_length, Request_ID, log_file_fd);
 
             }
             // GET
             else if (Meth == GET)
-                resultMeth = http_methods_GetReq(fileName, client_fd, Request_ID, logFileFD);
+                resultMeth = http_methods_GetReq(fileName, client_fd, Request_ID, log_file_fd);
             // HEAD
             else
-                resultMeth = http_methods_HeadReq(fileName, client_fd, Request_ID, logFileFD);
+                resultMeth = http_methods_HeadReq(fileName, client_fd, Request_ID, log_file_fd);
         }
         /*Resetting all variables to original values*/
         close(client_fd);
     }
 
-    g_signalThreads->finishThreads[threadNum] = true;
+    g_SignalThreads->finishThreads[threadNum] = true;
     return NULL;
 }
 
-/*URI locks that helps with the reader and write problem*/
-void URILockInit(int numThreads) {
-    e_uriLocks = malloc(sizeof(URILock)); // creating array of locks for number of threads
-    e_uriLocks->size = numThreads;
-    sem_init(&(e_uriLocks->changeList), 1, 1); // Initializing lock to check array
-    e_uriLocks->files = malloc(numThreads * sizeof(LockFile));
-    for (int i = 0; i < numThreads; ++i) {
-        (e_uriLocks->files)[i].URI[0] = '\0';
-        (e_uriLocks->files)[i].numReaders = 0;
-        (e_uriLocks->files)[i].numThreads = 0; // settign waiting/working threads to zero.
-        sem_init(&((e_uriLocks->files)[i].fileWrite), 1, 1);
-        sem_init(&((e_uriLocks->files)[i].numReadKey), 1, 1);
-    }
+
+void FinishedThreadsInit( int number_of_thr eads) {
+    g_SignalThreads = malloc(sizeof(SignalThreads)); // malloc array for singal threads
+    g_SignalThreads->size = number_of_threads; // Holds How many threads present
+    g_SignalThreads->finishThreads
+        = calloc(number_of_threads, sizeof(atomic_bool)); // Initializing boolean array
 }
 
-void FreeUriLocks() {
-    int size = e_uriLocks->size;
-    for (int i = 0; i < size; ++i) {
-        // unitialize all semaphores used
-        sem_destroy(&((e_uriLocks->files)[i].fileWrite));
-        sem_destroy(&((e_uriLocks->files)[i].numReadKey));
-    }
-    // now free the memory
-    free(e_uriLocks->files);
-    sem_destroy(&(e_uriLocks->changeList));
-    free(e_uriLocks);
-    e_uriLocks = NULL;
+void FinishedThreadsInitF ree() {
+    free(g_SignalThreads->finishThreads); // free bool array
+    free(g_SignalThreads);
+    g_SignalThreads = NULL;
 }
 
-void FinishThreadInit(int numThreads) {
-    g_signalThreads = malloc(sizeof(signalThreads)); // malloc array for singal threads
-    g_signalThreads->size = numThreads; // Holds How many threads present
-    g_signalThreads->finishThreads
-        = calloc(numThreads, sizeof(atomic_bool)); // Initializing boolean array
-}
-
-void FinishThreadInitFree() {
-    free(g_signalThreads->finishThreads); // free bool array
-    free(g_signalThreads);
-    g_signalThreads = NULL;
-}
-
-void OptionalArgumentChecker(
-    bool *l_flag, bool *t_flag, int argc, char *argv[], int *numThreads, char *log_file) {
+void Opt ionalArgumentChecker(
+    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file) {
     int char_get = 0; // Holds char value
     while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
         switch (char_get) {
@@ -550,7 +429,7 @@ void OptionalArgumentChecker(
                         exit(1);
                     }
                 }
-                *numThreads = atoi(optarg);
+                *number_of_threads = atoi(optarg);
             } else {
                 warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
                 exit(1);
