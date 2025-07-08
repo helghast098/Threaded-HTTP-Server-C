@@ -42,7 +42,7 @@ typedef struct {
 } Headers;
 
 typedef struct {
-    Buffer request_string;
+    Buffer *request_string;
     RequestState current_state; // Used to determine completion of request
     Methods type; // Set by RequestChecker
     Headers headers; // set by header field checker
@@ -54,7 +54,7 @@ Buffer *CreateBuffer( size_t size );
 
 void DeleteBuffer( Buffer **buff );
 
-Request *CreateRequest( size_t size );
+Request *CreateRequest( size_t request_length, size_t file_name_length );
 
 void DeleteRequest( Request **req );
 

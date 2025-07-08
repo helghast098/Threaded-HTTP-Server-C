@@ -61,10 +61,10 @@ void HeaderValCheck( Request *request, char *key, char *val ) {
 }
 
 void RemoveLeftTrailingSpaces( Request *request ) {
-    int i = request->request_string.current_index;
-    while ( ( i < request->request_string.length ) && ( request->request_string.data[ i ] == ' ') ) {
-        ++( request->request_string.current_index );
-        i = request->request_string.current_index;
+    int i = request->request_string->current_index;
+    while ( ( i < request->request_string->length ) && ( request->request_string->data[ i ] == ' ') ) {
+        ++( request->request_string->current_index );
+        i = request->request_string->current_index;
     }
 
 }
@@ -73,8 +73,8 @@ int GetMethod( Request *request ) {
     char method[10]; // holds method part
     // Checking If method is valid
     for ( int i = 0; i < METHOD_LENGTH + 1; ++i ) {
-        char c = request->request_string.data[i];
-        ++( request->request_string.current_index );
+        char c = request->request_string->data[i];
+        ++( request->request_string->current_index );
         if ( !ValidMethodChar( c ) || ( i == METHOD_LENGTH && c != ' ' ) ) {
             return -1;
         }
@@ -105,19 +105,19 @@ int GetMethod( Request *request ) {
 }
 
 int GetFilePath( Request *request ) {
-    size_t start_index = request->request_string.current_index;
+    size_t start_index = request->request_string->current_index;
     int i = start_index;
     char c;
     char prev_char = '\0';
-    while ( ( request->request_string.current_index < request->request_string.length ) && ( ( i - start_index ) <= ( FILE_NAME_LENGTH + 1) ) ) {
-        c = request->request_string.data[ i ];
+    while ( ( request->request_string->current_index < request->request_string->length ) && ( ( i - start_index ) <= ( FILE_NAME_LENGTH + 1) ) ) {
+        c = request->request_string->data[ i ];
 
         if ( ( prev_char == '/' ) && ( prev_char == c ) ) {
             return -1;
         }
 
         if ( ( i == start_index ) ) {
-            if  ( request->request_string.data[ start_index ] != '/' ) {
+            if  ( request->request_string->data[ start_index ] != '/' ) {
                 return -1;
             }
         }
@@ -131,7 +131,7 @@ int GetFilePath( Request *request ) {
             {
                 return -1;
             }
-            ++( request->request_string.current_index );
+            ++( request->request_string->current_index );
             return 0;
         }
         else {
@@ -140,8 +140,8 @@ int GetFilePath( Request *request ) {
             }
             (*request).file[ i - start_index - 1] = c;
         }
-        ++( request->request_string.current_index );
-        i = request->request_string.current_index;
+        ++( request->request_string->current_index );
+        i = request->request_string->current_index;
         prev_char = c;
     }
 
@@ -153,17 +153,17 @@ int CheckHTTPVersion( Request *request ) {
 
     char http_version[ VERSION_LENGTH + 1 ];
 
-    int start_index = request->request_string.current_index;
+    int start_index = request->request_string->current_index;
     int i = start_index;
 
-    while ( request->request_string.current_index < request->request_string.length && ( i - start_index ) < VERSION_LENGTH ) {
+    while ( request->request_string->current_index < request->request_string->length && ( i - start_index ) < VERSION_LENGTH ) {
 
-        char c = request->request_string.data[ i ];
+        char c = request->request_string->data[ i ];
 
         http_version[ i - start_index ] = c;
 
-        ++ ( request->request_string.current_index );
-        i = request->request_string.current_index;
+        ++ ( request->request_string->current_index );
+        i = request->request_string->current_index;
     }
 
     http_version[ i - start_index] = '\0';
@@ -197,27 +197,26 @@ void DeleteBuffer( Buffer **buff ) {
         return;
     }
 
-    free( *buff->data );
+    free( (*buff)->data );
     free( *buff );
     *buff = NULL;
 }
 
-Request *CreateRequest( size_t size ) {
+Request *CreateRequest( size_t request_length, size_t file_name_length ) {
     Request *req = calloc( 1, sizeof( Request ) );
     if ( req == NULL) {
         return NULL;
     }
-    req->request_string = CreateBuffer( size );
 
+    req->request_string = CreateBuffer( request_length );
     if ( req->request_string == NULL) {
         free( req );
         return NULL;
     }
 
-    req->file = malloc( sizeof( char ) * FILE_NAME_LENGTH );
-
+    req->file = malloc( sizeof( char ) * ( file_name_length + 1 ) );
     if ( req->file == NULL ) {
-        DeleteBuffer( req->request_string );
+        DeleteBuffer( &( req->request_string ) );
         free( req );
         return NULL;
     }
@@ -225,8 +224,8 @@ Request *CreateRequest( size_t size ) {
 }
 
 void DeleteRequest( Request **req ) {
-    DeleteBuffer( *req->request_string );
-    free( *req->file );
+    DeleteBuffer( &( (*req)->request_string ) );
+    free( (*req)->file );
     free( *req );
     *req = NULL;
 }
@@ -234,7 +233,7 @@ void DeleteRequest( Request **req ) {
 
 int RequestChecker( Request *request) {
     RequestCheckerState state = STATE_CHECK_METHOD;
-    request->request_string.current_index = 0;
+    request->request_string->current_index = 0;
 
     while ( state != STATE_VALID_REQUEST ) {
         switch ( state ) {
@@ -277,16 +276,16 @@ int HeaderFieldChecker( Request *request ) {
 
     bool content_length_found = false;
 
-    while ( request->request_string.current_index < request->request_string.length ) {
-        int i = request->request_string.current_index;
+    while ( request->request_string->current_index < request->request_string->length ) {
+        int i = request->request_string->current_index;
 
         switch ( current_state ) {
             case STATE_START:
-                if ( request->request_string.data[ i ] == '\r' ) {
-                    ++ ( request->request_string.current_index );
+                if ( request->request_string->data[ i ] == '\r' ) {
+                    ++ ( request->request_string->current_index );
                     current_state = STATE_2_R;
                 }
-                else if ( request->request_string.data[ i ] == '\n' ) {
+                else if ( request->request_string->data[ i ] == '\n' ) {
                     return -1;
                 }
                 else {
@@ -298,16 +297,16 @@ int HeaderFieldChecker( Request *request ) {
                 key_index = 0;
                 val_index = 0;
 
-                if ( request->request_string.data[ i ] == ' ' ) {
+                if ( request->request_string->data[ i ] == ' ' ) {
                     RemoveLeftTrailingSpaces( request );
                 }
-                else if (  !ValidValKeyChar( request->request_string.data[ i ] ) ) {
+                else if (  !ValidValKeyChar( request->request_string->data[ i ] ) ) {
                     return -1;
                 }
                 else {
-                    key[ key_index ] = request->request_string.data[ i ];
+                    key[ key_index ] = request->request_string->data[ i ];
                     ++key_index;
-                    ++ ( request->request_string.current_index );
+                    ++ ( request->request_string->current_index );
                     current_state = STATE_KEY;
                 }
             break;
@@ -317,32 +316,32 @@ int HeaderFieldChecker( Request *request ) {
                     return -1;
                 }
 
-                if ( request->request_string.data[ i ] == ':' ) {
+                if ( request->request_string->data[ i ] == ':' ) {
                     key[ key_index ] = '\0';
-                    ++ ( request->request_string.current_index );
+                    ++ ( request->request_string->current_index );
                     current_state = STATE_START_VAL;
                 }
-                else if ( !ValidValKeyChar( request->request_string.data[ i ] ) ) {
+                else if ( !ValidValKeyChar( request->request_string->data[ i ] ) ) {
                     return -1;
                 }
                 else {
-                    key[ key_index ] = request->request_string.data[ i ];
+                    key[ key_index ] = request->request_string->data[ i ];
                     ++key_index;
-                    ++ ( request->request_string.current_index );
+                    ++ ( request->request_string->current_index );
                 }
             break;
 
             case STATE_START_VAL:
-                if ( request->request_string.data[ i ] == ' ' ) {
+                if ( request->request_string->data[ i ] == ' ' ) {
                     RemoveLeftTrailingSpaces( request );
                 }
-                else if (  !ValidValKeyChar( request->request_string.data[ i ] ) ) {
+                else if (  !ValidValKeyChar( request->request_string->data[ i ] ) ) {
                     return -1;
                 }
                 else {
-                    val[ val_index ] = request->request_string.data[ i ];
+                    val[ val_index ] = request->request_string->data[ i ];
                     ++val_index;
-                    ++ ( request->request_string.current_index );
+                    ++ ( request->request_string->current_index );
                     current_state = STATE_VAL;
                 }
             break;
@@ -352,51 +351,51 @@ int HeaderFieldChecker( Request *request ) {
                     return -1;
                 }
 
-                if ( request->request_string.data[ i ] == '\r' ) {
+                if ( request->request_string->data[ i ] == '\r' ) {
                     val[ val_index ] = '\0';
-                    ++( request->request_string.current_index );
+                    ++( request->request_string->current_index );
                     current_state = STATE_1_R;
                 }
-                else if ( !ValidValKeyChar( request->request_string.data[ i ] ) ) {
+                else if ( !ValidValKeyChar( request->request_string->data[ i ] ) ) {
                     return -1;
                 }
                 else {
-                    val [ val_index  ] = request->request_string.data[ i ];
+                    val [ val_index  ] = request->request_string->data[ i ];
                     ++val_index;
-                    ++( request->request_string.current_index );
+                    ++( request->request_string->current_index );
                 } 
             break;
 
             case STATE_1_R:
-                if ( request->request_string.data[ i ] != '\n' ) {
+                if ( request->request_string->data[ i ] != '\n' ) {
                     return -1;
                 }
 
-                ++( request->request_string.current_index );
+                ++( request->request_string->current_index );
                 current_state = STATE_1_N;
             break;
 
             case STATE_1_N:
                 HeaderValCheck( request, key, val );
 
-                if ( request->request_string.data[ i ] != '\r' ) {
+                if ( request->request_string->data[ i ] != '\r' ) {
                     current_state = STATE_START_KEY;
                 }
                 else {
                     current_state = STATE_2_R;
-                    ++ ( request->request_string.current_index );
+                    ++ ( request->request_string->current_index );
                 }
             break;
 
             case STATE_2_R:
-                if ( request->request_string.data[ i ] != '\n' ) {
+                if ( request->request_string->data[ i ] != '\n' ) {
                     return -1;
                 }
                 
                 if ( ( request->type == PUT ) && ( request->headers.content_length == -1 ) ) {
                     return -1;
                 }
-                ++ ( request->request_string.current_index );
+                ++ ( request->request_string->current_index );
                 return 0;
 
             break;
