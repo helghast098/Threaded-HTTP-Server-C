@@ -187,6 +187,7 @@ int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, i
         LogFilePrint( request->headers.request_id, log_fd, 500, request->file, "GET" );
         return -1;
     }
+    DeleteBuffer( &message_str );
 
     if ( request->type == GET ) {
         // Writing content to client
@@ -222,7 +223,6 @@ int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, i
             StatusPrint( client_fd, ISE_ );
             LogFilePrint( request->headers.request_id, log_fd, 500, request->file, method );
             UnlockFile( file_locks, &acquired_file_lock );
-
             return -1;
         }
         DeleteBuffer( &buffer );
@@ -232,7 +232,6 @@ int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, i
 
     // END CRITICAL SECTION
     UnlockFile( file_locks, &acquired_file_lock );
-    DeleteBuffer( &message_str );
     LogFilePrint( request->headers.request_id, log_fd, 200, request->file, method );
     return 0;
 }
