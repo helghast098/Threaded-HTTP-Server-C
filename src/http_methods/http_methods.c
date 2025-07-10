@@ -23,6 +23,20 @@
 
 
 // Helper Functions
+int WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
+    while ( data->current_index < data->length ) {
+        size_t remain_bytes_to_write = data->length - data->current_index;
+        char *message_start = data->data + data->current_index;
+
+        ssize_t bytes_written = write( client_fd, message_start, remain_bytes_to_write );
+        if ( ( bytes_written < 0 ) || interrupt ) {
+            return -1;
+        }  
+
+        data->current_index += bytes_written;
+    }
+    return 0;
+}
 
 int FillClientBuffer( Buffer *client_buffer, int client_fd, size_t bytes_left, atomic_bool *interrupt_received ) {
     client_buffer->current_index = 0; // resets the index to write new data into buffer
@@ -71,18 +85,35 @@ int PutReadAndWrite( Request *request, Buffer *client_buffer, int client_fd, int
     return 0;
 }
 
-int WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
-    while ( data->current_index < data->length ) {
-        size_t remain_bytes_to_write = data->length - data->current_index;
-        char *message_start = data->data + data->current_index;
+int GetReadAndWrite( int client_fd, int fd, atomic_bool *interrupt_received, size_t file_size ) {
+    // Writing content to client
+    Buffer *buffer = CreateBuffer( MAX_GET_MESSAGE_BUFFER );
 
-        ssize_t bytes_written = write( client_fd, message_start, remain_bytes_to_write );
-        if ( ( bytes_written < 0 ) || interrupt ) {
-            return -1;
-        }  
+    size_t bytes_needed_to_send = file_size;
+    bool error = false;
 
-        data->current_index += bytes_written;
+    while ( bytes_needed_to_send != 0 ) {
+        // reading from file
+        buffer->current_index = 0;
+        buffer->length = 0;
+        ssize_t bytes_read_from_file = read( fd, buffer->data, buffer->max_size );
+
+        if ( bytes_read_from_file < 0 || interrupt_received ) {
+            error = true;
+            break;
+        }
+        buffer->length = bytes_read_from_file;
+
+        // sending data to client
+        if ( WriteToClient( buffer, client_fd, interrupt_received ) == -1 ) {
+            error = true;
+            break;
+        }
+
+        bytes_needed_to_send -= bytes_read_from_file;
     }
+    DeleteBuffer( &buffer );
+
     return 0;
 }
 
@@ -180,52 +211,24 @@ int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, i
     message_str->length = strlen( message_str->data );
 
     if ( WriteToClient( message_str, client_fd, interrupt_received ) == -1 ) {
-        DeleteBuffer( &message_str );
         close( fd );
+        DeleteBuffer( &message_str );
         UnlockFile( file_locks, &acquired_file_lock );
         StatusPrint(client_fd, ISE_);
         LogFilePrint( request->headers.request_id, log_fd, 500, request->file, "GET" );
         return -1;
     }
+    
     DeleteBuffer( &message_str );
 
     if ( request->type == GET ) {
-        // Writing content to client
-        Buffer *buffer = CreateBuffer( MAX_GET_MESSAGE_BUFFER );
-
-        size_t bytes_needed_to_send = file_stats.st_size;
-        bool error = false;
-
-        while ( bytes_needed_to_send != 0 ) {
-            // reading from file
-            buffer->current_index = 0;
-            buffer->length = 0;
-            ssize_t bytes_read_from_file = read( fd, buffer->data, buffer->max_size );
-
-            if ( bytes_read_from_file < 0 || interrupt_received ) {
-                error = true;
-                break;
-            }
-            buffer->length = bytes_read_from_file;
-
-            // sending data to client
-            if ( WriteToClient( buffer, client_fd, interrupt_received ) == -1 ) {
-                error = true;
-                break;
-            }
-
-            bytes_needed_to_send -= bytes_read_from_file;
-        }
-
-        if ( error ) {
-            DeleteBuffer( &buffer );
-            close( fd )
+        if ( GetReadAndWrite( client_fd, fd, interrupt_received, file_stats.st_size ) != 0 ) {
+            close( fd );
             StatusPrint( client_fd, ISE_ );
             LogFilePrint( request->headers.request_id, log_fd, 500, request->file, method );
             UnlockFile( file_locks, &acquired_file_lock );
             return -1;
         }
-        DeleteBuffer( &buffer );
     }
 
     close( fd );
