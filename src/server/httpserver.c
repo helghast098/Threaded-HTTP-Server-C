@@ -29,12 +29,24 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-SignalThreads *g_SignalThreads; // pointer to signal threads
-
 typedef struct SignalThreads {
     int size;
-    atomic_bool *finishThreads; // Holds an array for finished threads
+    atomic_bool *finished_threads; // Holds an array for finished threads
 } SignalThreads;
+
+
+
+typedef struct ThreadArguments {
+    SignalThreads *status_of_threads;
+    Queue *client_queue;
+    atomic_bool *interrupt_received;
+} ThreadArguments;
+
+
+
+static SignalThreads s_status_of_threads; // pointer to signal threads
+static Queue *s_client_queue;
+FileLocks *file_locks
 
 volatile atomic_bool ev_interrupt_received = false;
 
@@ -57,13 +69,13 @@ void SignalInterrupt(int signum) {
 
 
 int main(int argc, char *argv[]) {
-    char log_file[ 1000 ]; // Holds log file
+    char log_file[ 1000 ];
 
     // Setting up interrupt struct
-    struct sigaction interrup_sign;
-    memset(&interrup_sign, 0, sizeof(interrup_sign));
-    interrup_sign.sa_handler = SignalInterrupt;
-    sigaction(SIGTERM, &interrup_sign, NULL);
+    struct sigaction interrupt_signal;
+    memset( &interrupt_signal, 0, sizeof( interrupt_signal ) );
+    interrup_signal.sa_handler = SignalInterrupt;
+    sigaction( SIGTERM, &interrupt_signal, NULL );
 
     //Flags for optional arguments
     bool l_flag = false;
@@ -79,6 +91,7 @@ int main(int argc, char *argv[]) {
     // Checking optional arguments
     OptionalArgumentChecker( &l_flag, &t_flag, argc, argv, &number_of_threads, log_file );
 
+    // Opening log file
     if ( l_flag ) {
         if ( access( log_file, F_OK ) == 0 ) {
             log_file_fd = open(log_file, O_TRUNC | O_WRONLY);
@@ -114,17 +127,17 @@ int main(int argc, char *argv[]) {
     }
 
     // Initializing queue for requests
-    Queue *client_queue = QueueNew( number_of_threads ); // creates a queue size of threads
+    s_client_queue = QueueNew( number_of_threads );
 
     // Initializing file locks
     FileLocks *file_locks = CreateFileLocks( number_of_threads );
 
     // Setting up threads
-    FinishedThreadsInit( number_of_threads );
-
-    pthread_t worker_threads[number_of_threads];
+    s_status_of_threads.finished_threads = calloc( number_of_threads, sizeof( atomic_bool ) );
+    s_status_of_threads.size = number_of_threads;
 
     int thread_numbers[ number_of_threads ];
+    pthread_t worker_threads[number_of_threads];
 
     for ( int i = 0; i < number_of_threads; ++i ) {
         thread_numbers[ i ] = i;
@@ -385,21 +398,19 @@ void *WorkerRequest( void *arg ) {
 }
 
 
-void FinishedThreadsInit( int number_of_thr eads) {
-    g_SignalThreads = malloc(sizeof(SignalThreads)); // malloc array for singal threads
+void FinishedThreadsInit( int number_of_threads) {
     g_SignalThreads->size = number_of_threads; // Holds How many threads present
     g_SignalThreads->finishThreads
         = calloc(number_of_threads, sizeof(atomic_bool)); // Initializing boolean array
 }
 
-void FinishedThreadsInitF ree() {
+void FinishedThreadsInitFree() {
     free(g_SignalThreads->finishThreads); // free bool array
     free(g_SignalThreads);
     g_SignalThreads = NULL;
 }
 
-void Opt ionalArgumentChecker(
-    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file) {
+void OptionalArgumentChecker( bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file ) {
     int char_get = 0; // Holds char value
     while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
         switch (char_get) {
