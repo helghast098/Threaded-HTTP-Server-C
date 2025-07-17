@@ -66,11 +66,11 @@ void RemoveLeftTrailingSpaces( Request *request ) {
         ++( request->request_string->current_index );
         i = request->request_string->current_index;
     }
-
 }
 
 int GetMethod( Request *request ) {
     char method[10]; // holds method part
+
     // Checking If method is valid
     for ( int i = 0; i < METHOD_LENGTH + 1; ++i ) {
         char c = request->request_string->data[i];
@@ -111,7 +111,6 @@ int GetFilePath( Request *request ) {
     char prev_char = '\0';
     while ( ( request->request_string->current_index < request->request_string->length ) && ( ( i - start_index ) <= ( FILE_NAME_LENGTH + 1) ) ) {
         c = request->request_string->data[ i ];
-
         if ( ( prev_char == '/' ) && ( prev_char == c ) ) {
             return -1;
         }
@@ -126,11 +125,11 @@ int GetFilePath( Request *request ) {
         }
         else if ( c == ' ' ) {
             request->file[ i - start_index - 1 ] = '\0';
-
             if ( ( i - start_index ) ==  1 )
             {
                 return -1;
             }
+
             ++( request->request_string->current_index );
             return 0;
         }
@@ -140,6 +139,7 @@ int GetFilePath( Request *request ) {
             }
             (*request).file[ i - start_index - 1] = c;
         }
+
         ++( request->request_string->current_index );
         i = request->request_string->current_index;
         prev_char = c;
@@ -152,25 +152,21 @@ int GetFilePath( Request *request ) {
 int CheckHTTPVersion( Request *request ) {
 
     char http_version[ VERSION_LENGTH + 1 ];
-
     int start_index = request->request_string->current_index;
     int i = start_index;
 
     while ( request->request_string->current_index < request->request_string->length && ( i - start_index ) < VERSION_LENGTH ) {
-
         char c = request->request_string->data[ i ];
-
         http_version[ i - start_index ] = c;
-
         ++ ( request->request_string->current_index );
         i = request->request_string->current_index;
     }
 
     http_version[ i - start_index] = '\0';
-
     if ( strcmp( "HTTP/1.1\r\n", http_version ) != 0 ) {
         return -1;
     }
+    
     return 0;
 }
 
@@ -214,7 +210,7 @@ Request *CreateRequest( size_t request_length, size_t file_name_length ) {
         return NULL;
     }
 
-    req->file = malloc( sizeof( char ) * ( file_name_length + 1 ) );
+    req->file = malloc( sizeof( char ) * ( file_name_length + 1 )+- );
     if ( req->file == NULL ) {
         DeleteBuffer( &( req->request_string ) );
         free( req );

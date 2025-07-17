@@ -195,9 +195,7 @@ FileLocks *CreateFileLocks( size_t size ) {
     file_locks->free_indicies_queue = QueueNew( size );
 
     for ( int i = 0; i < size; ++i ) {
-
         int *index = malloc( sizeof( int ) );
-
         *index = i;
         QueuePush( file_locks->free_indicies_queue, index );
     }
@@ -289,14 +287,12 @@ FileLink LockFile ( FileLocks *file_locks, const char *file, Action action ) {
         QueuePop( file_locks->free_indicies_queue, &index );
 
         int file_index = *( ( int * ) index );
-        
         free( index );
 
         strcpy( file_locks->file_names[ file_index ], file );
 
         // Insert index and threads_currently_using to used_index_list
         ListAddLink( file_locks->used_index_list, file_index );
-
         current_link = file_locks->used_index_list->tail;
     }
 
@@ -306,7 +302,6 @@ FileLink LockFile ( FileLocks *file_locks, const char *file, Action action ) {
 
     file_index = current_link->attr.index;
     FileInfo *file_info = &( file_locks->file_info[ file_index ] ); // Dont need key to read file_info
-
 
     if ( action == READ ) {
         sem_wait( &( file_info->read_lock ) );
@@ -359,8 +354,8 @@ void UnlockFile( FileLocks *file_lock, FileLink *file_link_ptr ) {
     if ( ( *file_link_ptr )->attr.threads_currently_using == 0 ) {
 
         int *index = malloc( sizeof( int ) );
-        *index = ( *file_link_ptr )->attr.index;
 
+        *index = ( *file_link_ptr )->attr.index;
         QueuePush( file_lock->free_indicies_queue, index );
 
         ListRemoveLink( file_lock->used_index_list,  file_link_ptr );
@@ -368,6 +363,5 @@ void UnlockFile( FileLocks *file_lock, FileLink *file_link_ptr ) {
         pthread_cond_signal( &( file_lock->queue_not_empty_cond ) );
     }
 
-    pthread_mutex_unlock( &( file_lock->key ) );
-    
+    pthread_mutex_unlock( &( file_lock->key ) );  
 }
