@@ -27,8 +27,8 @@ int WriteToClient( Buffer *data, int client_fd, atomic_bool *interrupt ) {
     while ( data->current_index < data->length ) {
         size_t remain_bytes_to_write = data->length - data->current_index;
         char *message_start = data->data + data->current_index;
-
         ssize_t bytes_written = write( client_fd, message_start, remain_bytes_to_write );
+
         if ( ( bytes_written < 0 ) || interrupt ) {
             return -1;
         }  
@@ -44,8 +44,8 @@ int FillClientBuffer( Buffer *client_buffer, int client_fd, size_t bytes_left, a
     while ( ( client_buffer->length != client_buffer->max_size ) && ( client_buffer->length < bytes_left ) && !interrupt_received ) {
         char *start_address = client_buffer->data + client_buffer->current_index;
         size_t bytes_until_full = client_buffer->max_size - client_buffer->length;
-
         ssize_t received_bytes = read( client_fd, start_address, bytes_until_full );
+
         if ( received_bytes <= 0 ) {
             return -1;
         }
@@ -88,7 +88,6 @@ int PutReadAndWrite( Request *request, Buffer *client_buffer, int client_fd, int
 int GetReadAndWrite( int client_fd, int fd, atomic_bool *interrupt_received, size_t file_size ) {
     // Writing content to client
     Buffer *buffer = CreateBuffer( MAX_GET_MESSAGE_BUFFER );
-
     size_t bytes_needed_to_send = file_size;
     bool error = false;
 
@@ -102,6 +101,7 @@ int GetReadAndWrite( int client_fd, int fd, atomic_bool *interrupt_received, siz
             error = true;
             break;
         }
+
         buffer->length = bytes_read_from_file;
 
         // sending data to client
@@ -162,8 +162,9 @@ int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_
         LogFilePrint( request->headers.request_id, log_fd, 500, request->file, "PUT" ); // Printing to Log
         return -1;
     }
-    close( temp_fd );
 
+    close( temp_fd );
+    
     FileLink acquired_file_lock = LockFile( file_locks, request->file, WRITE );
 
     // CRITICAL SECTION
