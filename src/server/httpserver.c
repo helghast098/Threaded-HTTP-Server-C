@@ -29,24 +29,25 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-typedef struct SignalThreads {
-    int size;
-    atomic_bool *finished_threads; // Holds an array for finished threads
-} SignalThreads;
+// Interrupt function
+atomic_bool g_interrupt_received = false;
+void SignalInterrupt(int signum) {
+    if (signum == SIGTERM) {
+        g_interrupt_received = true;
+    }
+}
 
 
+typedef struct ThreadsFinished {
+    const int num_of_threads;
+    atomic_int num_of_threads_finished;
+} ThreadsFinished;
 
 typedef struct ThreadArguments {
-    SignalThreads *status_of_threads;
+    ThreadsFinished *status_of_threads;
     Queue *client_queue;
-    atomic_bool *interrupt_received;
 } ThreadArguments;
 
-
-
-static SignalThreads s_status_of_threads; // pointer to signal threads
-static Queue *s_client_queue;
-FileLocks *file_locks
 
 volatile atomic_bool ev_interrupt_received = false;
 
@@ -58,97 +59,10 @@ void FinishedThreadsInitFree();
 
 void *WorkerRequest( void *arg );
 
-void OptionalArgumentChecker(
-    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file);
-
-void SignalInterrupt(int signum) {
-    if (signum == SIGTERM) {
-        ev_interrupt_received = true;
-    }
-}
 
 
-int main(int argc, char *argv[]) {
-    char log_file[ 1000 ];
-
-    // Setting up interrupt struct
-    struct sigaction interrupt_signal;
-    memset( &interrupt_signal, 0, sizeof( interrupt_signal ) );
-    interrup_signal.sa_handler = SignalInterrupt;
-    sigaction( SIGTERM, &interrupt_signal, NULL );
-
-    //Flags for optional arguments
-    bool l_flag = false;
-    bool t_flag = false;
-    int number_of_threads = 4;
-
-    // If there are no arguments
-    if (argc < 2) {
-        warnx("Too few arguments:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
-        exit(1);
-    }
-
-    // Checking optional arguments
-    OptionalArgumentChecker( &l_flag, &t_flag, argc, argv, &number_of_threads, log_file );
-
-    // Opening log file
-    if ( l_flag ) {
-        if ( access( log_file, F_OK ) == 0 ) {
-            log_file_fd = open(log_file, O_TRUNC | O_WRONLY);
-
-            if (log_file_fd < 0) {
-                warnx("logfile opener: %s", strerror(errno));
-                exit(1);
-            }
-        }
-        else {
-            log_file_fd = open( log_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR );
-            
-            if ( log_file_fd < 0 ) {
-                warnx("logfile opener: %s", strerror(errno));
-                exit(1);
-            }
-        }
-    }
-
-    // Getting Port Number
-    // First Checking there is an actual number available
-    if ( optind == argc ) {
-        warnx( "No port given: ./httpserver [-t threads] [-l logfile] <port>" );
-        exit( 1 );
-    }
-
-    uint16_t port_num = StrToPort( argv[ optind ] );
-    int socket_fd = create_listen_socket( port_num );
-
-    if ( socket_fd < 0 ) {
-        warnx( "bind: %s", strerror( errno ) );
-        exit( 1 );
-    }
-
-    // Initializing queue for requests
-    s_client_queue = QueueNew( number_of_threads );
-
-    // Initializing file locks
-    FileLocks *file_locks = CreateFileLocks( number_of_threads );
-
-    // Setting up threads
-    s_status_of_threads.finished_threads = calloc( number_of_threads, sizeof( atomic_bool ) );
-    s_status_of_threads.size = number_of_threads;
-
-    int thread_numbers[ number_of_threads ];
-    pthread_t worker_threads[number_of_threads];
-
-    for ( int i = 0; i < number_of_threads; ++i ) {
-        thread_numbers[ i ] = i;
-    }
-
-    for ( int i = 0; i < number_of_threads; ++i ) {
-        void *ThreadArg = &( thread_numbers[i] ); // Giving each thread an identifier
-        pthread_create( worker_threads + i, NULL, WorkerRequest, ThreadArg );
-    }
-
-    while ( !ev_interrupt_received ) {
+void ListenForClients( Queue *client_queue ) {
+    while ( !g_interrupt_received ) {
         int *client_fd = malloc( sizeof(int) );
         *( client_fd ) = accept( socket_fd, NULL, NULL ); // waiting for connections
 
@@ -169,43 +83,119 @@ int main(int argc, char *argv[]) {
             free( client_fd );
         }
     }
+}
 
-    bool all_threads_finished = false;
-    QueueShutDown( client_queue );
 
-    // Sending to command to queue to wake up threads
-    while (!all_threads_finished) {
-        int numFin = 0; // Shows how many threads finished
-        for (int i = 0; i < g_SignalThreads->size; ++i) {
-            if (g_SignalThreads->finishThreads[i]) {
-                ++numFin; // Increment counter for finish
-            }
-        }
 
-        // Checking numFin
-        if (numFin == g_SignalThreads->size)
-            all_threads_finished = true; // If all threads finish set to notify
-        else
-            usleep(100); // sleep for 100 microseconds
+
+void OptionalArgumentChecker(
+    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file);
+
+int main(int argc, char *argv[]) {
+    // SETTING UP INTERRUPT STRUCT
+    struct sigaction interrupt_signal;
+    memset( &interrupt_signal, 0, sizeof( interrupt_signal ) );
+    interrup_signal.sa_handler = SignalInterrupt;
+    sigaction( SIGTERM, &interrupt_signal, NULL );
+
+    //FLAGS FOR OPTIONAL ARGUMENTS
+    bool l_flag = false;
+    bool t_flag = false;
+    int number_of_threads = 4;
+
+    // IF THERE ARE NO ARGUMENTS
+    if (argc < 2) {
+        warnx("Too few arguments:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
+        exit(1);
     }
 
-    // Joining threads
+    // CHECKING OPTIONAL ARGUMENTS
+    OptionalArgumentChecker( &l_flag, &t_flag, argc, argv, &number_of_threads, log_file );
+
+    // OPENING LOG FILE
+    char log_file[ 1000 ];
+
+    if ( l_flag ) {
+        if ( access( log_file, F_OK ) == 0 ) {
+            log_file_fd = open(log_file, O_TRUNC | O_WRONLY);
+
+            if (log_file_fd < 0) {
+                warnx("logfile opener: %s", strerror(errno));
+                exit(1);
+            }
+        }
+        else {
+            log_file_fd = open( log_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR );
+            
+            if ( log_file_fd < 0 ) {
+                warnx("logfile opener: %s", strerror(errno));
+                exit(1);
+            }
+        }
+    }
+
+    // GETTING PORT NUMBER
+    // First Checking there is an actual number available
+    if ( optind == argc ) {
+        warnx( "No port given: ./httpserver [-t threads] [-l logfile] <port>" );
+        exit( 1 );
+    }
+
+    uint16_t port_num = StrToPort( argv[ optind ] );
+    int socket_fd = create_listen_socket( port_num );
+
+    if ( socket_fd < 0 ) {
+        warnx( "bind: %s", strerror( errno ) );
+        exit( 1 );
+    }
+
+    // INITIALIZING QUEUE FOR REQUESTS
+    Queue *client_queue; = QueueNew( number_of_threads );
+
+    // INITIALIZING FILE LOCKS
+    FileLocks *file_locks = CreateFileLocks( number_of_threads );
+
+    // SETTING UP THREADS
+    ThreadsFinished status_of_threads;
+    status_of_threads.num_of_threads = number_of_threads;
+    status_of_threads.num_of_threads_finished = 0;
+
+    pthread_t worker_threads[ number_of_threads ];
+
+    for ( int i = 0; i < number_of_threads; ++i ) {
+        ThreadArguments *thread_arg = malloc( sizeof( ThreadArguments ) );
+        thread_arg->status_of_threads = &status_of_threads;
+        thread_arg->client_queue = client_queue;
+
+        pthread_create( worker_threads + i, NULL, WorkerRequest, ( void * ) thread_arg );
+    }
+
+    // ACQUIRING CLIENTS
+    ListenForClients( client_queue );
+
+    // SHUTDOWN SERVER
+    QueueShutDown( client_queue );
+
+    while ( status_of_threads.num_of_threads == status_of_threads.num_of_threads_finished ) {
+        usleep(100); // sleep for 100 microseconds
+    }
+
     for (int i = 0; i < number_of_threads; ++i) {
-        pthread_join(worker_threads[i], NULL);
+        pthread_join( worker_threads[ i ], NULL );
     }
 
     printf("End of Handling Requests\n");
 
     // Removing queue structs present
-    while (queue_size( client_queue ) != 0) {
+    while ( queue_size( client_queue ) != 0 ) {
         void *garbage_val;
         QueuePop( client_queue , &garbage_val );
         free( garabge_val );
     }
 
     QueueDelete( &client_queeu );
-    FinishedThreadsInitFree();
     DeleteFileLocks( &file_locks );
+
     fsync( log_file_fd ); //** Freeing memory for URI lock
     close( log_file_fd ); // Close log file
     return 0;
@@ -267,7 +257,7 @@ void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
 }
 
 void *WorkerRequest( void *arg ) {
-    int threadNum = *( ( int * ) arg) ;
+    ThreadArguments * thread_arg = arg ;
 
     Buffer client_buffer = {
         .data = malloc( sizeof( char ) * CLIENT_BUFFER_SIZE ),
@@ -393,21 +383,8 @@ void *WorkerRequest( void *arg ) {
         close(client_fd);
     }
 
-    g_SignalThreads->finishThreads[threadNum] = true;
+    ++( thread_arg->status_of_threads->num_of_threads_finished );
     return NULL;
-}
-
-
-void FinishedThreadsInit( int number_of_threads) {
-    g_SignalThreads->size = number_of_threads; // Holds How many threads present
-    g_SignalThreads->finishThreads
-        = calloc(number_of_threads, sizeof(atomic_bool)); // Initializing boolean array
-}
-
-void FinishedThreadsInitFree() {
-    free(g_SignalThreads->finishThreads); // free bool array
-    free(g_SignalThreads);
-    g_SignalThreads = NULL;
 }
 
 void OptionalArgumentChecker( bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file ) {
