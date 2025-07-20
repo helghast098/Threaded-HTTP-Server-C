@@ -44,22 +44,56 @@ typedef struct ThreadsFinished {
 } ThreadsFinished;
 
 typedef struct ThreadArguments {
+    FileLocks const *file_locks;
     ThreadsFinished *status_of_threads;
     Queue *client_queue;
 } ThreadArguments;
 
 
-volatile atomic_bool ev_interrupt_received = false;
+atomic_bool g_interrupt_received = false;
 
 int log_file_fd = STDERR_FILENO; // default logFile Descriptor
 
-void FinishedThreadsInit( int number_of_thr eads);
+void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
+    while ( client_buffer->current_index < client_buffer->length ) {
 
-void FinishedThreadsInitFree();
+        char c = client_buffer.data[ client_buffer->current_index ];
+        ++( client_buffer->current_index );
 
-void *WorkerRequest( void *arg );
+        request->buffer.data[ request->buffer.current_index ] = c;
+        ++( request->buffer.current_index );
+        ++( request->buffer.length );
 
+        switch ( request->current_state ) {
+            case INITIAL_STATE:
+                if ( c == '\r' ) {
+                    request->current_state = FIRST_R;
+                }
+            break;
 
+            case FIRST_R:
+                if ( c == '\n' ) {
+                    request->current_state = FIRST_N;
+                }
+            break;
+
+            case FIRST_N:
+                if (c == '\r' ) {
+                    request->current_state = SECOND_R;
+                }
+            break;
+
+            case SECOND_R:
+                if ( c == '\n' ) {
+                    request->current_state = REQUEST_COMPLETE;
+                }
+            break;
+
+            default;
+        }
+
+    }
+}
 
 void ListenForClients( Queue *client_queue ) {
     while ( !g_interrupt_received ) {
@@ -85,11 +119,155 @@ void ListenForClients( Queue *client_queue ) {
     }
 }
 
+void OptionalArgumentChecker( bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file ) {
+    int char_get = 0; // Holds char value
+    while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
+        switch (char_get) {
+            /*Checking for number of threads*/
+        case 'l':
+            *l_flag = true;
+            // If not string after
+            if (optarg != NULL) {
+                strcpy(log_file, optarg); // copies string into log_file
+            } else {
+                warnx(
+                    "invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
+                exit(1);
+            }
+            break;
 
+            /*Checking for logfile*/
+        case 't':
+            *t_flag = true;
+            if (optarg != NULL) {
+                // checking if valid numbers:
+                for (uint32_t i = 0; i < strlen(optarg); ++i) {
+                    if ((optarg[i] < '0') || (optarg[i] > '9')) {
+                        // need to exit program
+                        warnx(
+                            "invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
+                        exit(1);
+                    }
+                }
+                *number_of_threads = atoi(optarg);
+            } else {
+                warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
+                exit(1);
+            }
+            break;
 
+            /*If some random option*/
+        case '?': warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>"); exit(1);
 
-void OptionalArgumentChecker(
-    bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file);
+        case ':':
+            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>",
+                optopt);
+            exit(1);
+        }
+    }
+}
+
+void *WorkerRequest( void *arg ) {
+    ThreadArguments * thread_arg = arg ;
+
+    Buffer *client_buffer = CreateBuffer( CLIENT_BUFFER_SIZE );
+
+    Request * request = CreateRequest( REQUEST_BUFFER_SIZE, FILE_NAME_LENGTH );
+
+    while ( !ev_interrupt_received ) {
+        bool client_closed = false;
+        void *client_temp = NULL;
+        int client_fd;
+
+        // reseting variables
+        client_closed = false;
+
+        request.buffer.length = 0;
+        request.current_index = 0;
+        request.current_state = INITIAL_STATE;
+        request.type = NOT_VALID;
+        request.headers.content_length = -1;
+        request.headers.request_id = -1;
+        request.headers.expect = false;
+
+        if ( !QueuePop(  thread_arg->client_queue , &client_temp ) ) {
+            break;
+        }
+
+        client_fd = *( ( int * ) client_temp );
+        free( client_temp );
+
+        // need to set client to nonblocking
+        fcntl( client_fd, F_SETFL, O_NONBLOCK );
+
+        while ( !g_interrupt_received && ( request.current_state != REQUEST_COMPLETE ) ) {
+            int client_bytes_read = read( client_fd, client_buffer.data, client_buffer.max_size );
+
+            if ( client_bytes_read < 0 ) {
+                continue;
+            }
+            else if ( client_bytes_read == 0 ) {
+                client_closed = true;
+                break;
+            }
+            else {
+                client_buffer.length = client_bytes_read;
+                client_buffer.current_index = 0;
+                AppendingClientBufferToRequest( &request, &client_buffer );
+            }
+        }
+
+        if ( g_interrupt_received ) {
+            close( client_fd );
+            break;
+        }
+
+        if ( !client_closed ) {
+
+            // CHECKING FORMAT OF REQUEST
+            // Checking Request
+            if ( RequestChecker( &request ) != 0 ) {
+                StatusPrint( client_fd, BAD_REQUEST_ );
+                close( client_fd );
+                continue;
+            }
+
+            // Checking headerfields
+            if ( HeaderFieldChecker( &request ) != 0 ) {
+                StatusPrint( client_fd, BAD_REQUEST_ );
+                close( client_fd );
+                continue;
+            }
+
+            // CHOOSING METHOD
+            case ( request.type ) {
+                HEAD:
+                    HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                break;
+
+                GET:
+                    HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                break;
+
+                PUT:
+                    PUTRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                break;
+
+                default:
+                    StatusPrint( client_fd, NOT_IMP_ );
+            }
+        }
+        /*Resetting all variables to original values*/
+        close(client_fd);
+    }
+    ++( thread_arg->status_of_threads->num_of_threads_finished );
+    
+    free( thread_arg );
+    DeleteBuffer( &client_buffer );
+    DeleteRequest( &request );
+
+    return NULL;
+}
 
 int main(int argc, char *argv[]) {
     // SETTING UP INTERRUPT STRUCT
@@ -164,6 +342,7 @@ int main(int argc, char *argv[]) {
 
     for ( int i = 0; i < number_of_threads; ++i ) {
         ThreadArguments *thread_arg = malloc( sizeof( ThreadArguments ) );
+        thread_arg->status_of_threads = &file_locks;
         thread_arg->status_of_threads = &status_of_threads;
         thread_arg->client_queue = client_queue;
 
@@ -176,15 +355,13 @@ int main(int argc, char *argv[]) {
     // SHUTDOWN SERVER
     QueueShutDown( client_queue );
 
-    while ( status_of_threads.num_of_threads == status_of_threads.num_of_threads_finished ) {
+    while ( status_of_threads.num_of_threads != status_of_threads.num_of_threads_finished ) {
         usleep(100); // sleep for 100 microseconds
     }
 
     for (int i = 0; i < number_of_threads; ++i) {
         pthread_join( worker_threads[ i ], NULL );
     }
-
-    printf("End of Handling Requests\n");
 
     // Removing queue structs present
     while ( queue_size( client_queue ) != 0 ) {
@@ -199,238 +376,4 @@ int main(int argc, char *argv[]) {
     fsync( log_file_fd ); //** Freeing memory for URI lock
     close( log_file_fd ); // Close log file
     return 0;
-}
-
-uint16_t StrToPort(char *port) {
-    // Checking values of char
-    for (unsigned int i = 0; port[i] != '\0'; ++i) {
-        if (port[i] < '0' || port[i] > '9') {
-            warnx("invalid port number: %s", port);
-            exit(1);
-        }
-    }
-
-    // Turning string to long
-    uint16_t result = strtol(port, NULL, 10);
-    return result;
-}
-
-void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
-    while ( client_buffer->current_index < client_buffer->length ) {
-
-        char c = client_buffer.data[ client_buffer->current_index ];
-        ++( client_buffer->current_index );
-
-        request->buffer.data[ request->buffer.current_index ] = c;
-        ++( request->buffer.current_index );
-        ++( request->buffer.length );
-
-        switch ( request->current_state ) {
-            case INITIAL_STATE:
-                if ( c == '\r' ) {
-                    request->current_state = FIRST_R;
-                }
-            break;
-
-            case FIRST_R:
-                if ( c == '\n' ) {
-                    request->current_state = FIRST_N;
-                }
-            break;
-
-            case FIRST_N:
-                if (c == '\r' ) {
-                    request->current_state = SECOND_R;
-                }
-            break;
-
-            case SECOND_R:
-                if ( c == '\n' ) {
-                    request->current_state = REQUEST_COMPLETE;
-                }
-            break;
-
-            default;
-        }
-
-    }
-}
-
-void *WorkerRequest( void *arg ) {
-    ThreadArguments * thread_arg = arg ;
-
-    Buffer client_buffer = {
-        .data = malloc( sizeof( char ) * CLIENT_BUFFER_SIZE ),
-        .max_size = CLIENT_BUFFER_SIZE,
-        .length = 0,
-        .current_index = 0
-    };
-
-    Request request = {
-        .buffer = {
-            .data = malloc( sizeof ( char ) * REQUEST_BUFFER_SIZE ),
-            .max_size = REQUEST_BUFFER_SIZE,
-            .length = 0,
-            .current_index = 0
-        },
-
-        .current_state = INITIAL_STATE
-        .type = NOT_VALID,
-
-        .headers = {
-            .content_length = 0,
-            .request_id = 0
-        }
-
-        .file = malloc( sizeof ( char ) * FILE_NAME_LENGTH )
-    };
-
-    bool client_closed = false;
-
-    // get client descriptor from queue
-    void *client_temp = NULL; // only used to get client fd num and 
-
-    int client_fd;
-
-    while ( !ev_interrupt_received ) {
-        // reseting variables
-        client_closed = false;
-
-        request.buffer.length = 0;
-        request.current_index = 0;
-        request.current_state = INITIAL_STATE;
-        request.type = NOT_VALID;
-        request.headers.content_length = -1;
-        request.headers.request_id = -1;
-        request.headers.expect = false;
-
-        if ( !QueuePop(  client_queue , &client_temp ) ) {
-            break;
-        }
-
-        client_fd = *( ( int * ) client_temp );
-        free( client_temp );
-
-        // need to set client to nonblocking
-        fcntl( client_fd, F_SETFL, O_NONBLOCK );
-
-        while ( !ev_interrupt_received && ( request.current_state != REQUEST_COMPLETE ) ) {
-            int client_bytes_read = read( client_fd, client_buffer.data, client_buffer.max_size );
-
-            if ( client_bytes_read < 0 ) {
-                continue;
-            }
-            else if ( client_bytes_read == 0 ) {
-                client_closed = true;
-                break;
-            }
-            else {
-                client_buffer.length = client_bytes_read;
-                client_buffer.current_index = 0;
-                AppendingClientBufferToRequest( &request, &client_buffer );
-            }
-        }
-
-        if ( ev_interrupt_received ) {
-            close( client_fd );
-            break;
-        }
-
-        /*Checking format of request */
-        if ( !client_closed ) {
-
-            // Checking Request
-            if ( RequestChecker( &request ) != 0 ) {
-                http_methods_StatusPrint( client_fd, BAD_REQUEST_ );
-                close( client_fd );
-                continue;
-            }
-
-            // Checking headerfields
-            if ( HeaderFieldChecker( &request ) != 0 ) {
-                http_methods_StatusPrint( client_fd, BAD_REQUEST_ );
-                close( client_fd );
-                continue;
-            }
-
-
-            // check if no valid Meth
-            if (Meth == NO_VALID) {
-                // Throw proper error
-                http_methods_StatusPrint(client_fd, NOT_IMP_);
-                close(client_fd);
-                continue;
-            }
-
-            // Checking for file existence
-            int resultMeth = 0;
-
-            // PUT
-            if (Meth == PUT) {
-                resultMeth = http_methods_PutReq(fileName, client_buffer, client_fd, &currentPosBuff,
-                    &client_bytes_read
-, Content_length, Request_ID, log_file_fd);
-
-            }
-            // GET
-            else if (Meth == GET)
-                resultMeth = http_methods_GetReq(fileName, client_fd, Request_ID, log_file_fd);
-            // HEAD
-            else
-                resultMeth = http_methods_HeadReq(fileName, client_fd, Request_ID, log_file_fd);
-        }
-        /*Resetting all variables to original values*/
-        close(client_fd);
-    }
-
-    ++( thread_arg->status_of_threads->num_of_threads_finished );
-    return NULL;
-}
-
-void OptionalArgumentChecker( bool *l_flag, bool *t_flag, int argc, char *argv[], int *number_of_threads, char *log_file ) {
-    int char_get = 0; // Holds char value
-    while ((char_get = getopt(argc, argv, ":t:l:")) != -1) {
-        switch (char_get) {
-            /*Checking for number of threads*/
-        case 'l':
-            *l_flag = true;
-            // If not string after
-            if (optarg != NULL) {
-                strcpy(log_file, optarg); // copies string into log_file
-            } else {
-                warnx(
-                    "invalid option input:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
-                exit(1);
-            }
-            break;
-
-            /*Checking for logfile*/
-        case 't':
-            *t_flag = true;
-            if (optarg != NULL) {
-                // checking if valid numbers:
-                for (uint32_t i = 0; i < strlen(optarg); ++i) {
-                    if ((optarg[i] < '0') || (optarg[i] > '9')) {
-                        // need to exit program
-                        warnx(
-                            "invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
-                        exit(1);
-                    }
-                }
-                *number_of_threads = atoi(optarg);
-            } else {
-                warnx("invalid option input: ./httpserver [-t threads] [-l logfile] <port>");
-                exit(1);
-            }
-            break;
-
-            /*If some random option*/
-        case '?': warnx("invalid option: ./httpserver [-t threads] [-l logfile] <port>"); exit(1);
-
-        case ':':
-            warnx("No value given for option %c: ./httpserver [-t threads] [-l logfile] <port>",
-                optopt);
-            exit(1);
-        }
-    }
 }
