@@ -44,7 +44,7 @@ typedef struct ThreadsFinished {
 } ThreadsFinished;
 
 typedef struct ThreadArguments {
-    FileLocks const *file_locks;
+    FileLocks *const file_locks;
     ThreadsFinished *status_of_threads;
     Queue *client_queue;
 } ThreadArguments;
