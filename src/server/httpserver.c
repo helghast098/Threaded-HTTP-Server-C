@@ -235,16 +235,16 @@ void *WorkerRequest( void *arg ) {
             }
 
             // CHOOSING METHOD
-            case ( request.type ) {
-                HEAD:
+            switch ( request.type ) {
+                case HEAD:
                     HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
-                GET:
+                case GET:
                     HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
-                PUT:
+                case PUT:
                     PUTRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
