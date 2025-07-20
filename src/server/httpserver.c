@@ -29,14 +29,14 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-// Interrupt function
+int log_file_fd = STDERR_FILENO; // default logFile Descriptor
+
 atomic_bool g_interrupt_received = false;
 void SignalInterrupt(int signum) {
     if (signum == SIGTERM) {
         g_interrupt_received = true;
     }
 }
-
 
 typedef struct ThreadsFinished {
     const int num_of_threads;
@@ -48,11 +48,6 @@ typedef struct ThreadArguments {
     ThreadsFinished *status_of_threads;
     Queue *client_queue;
 } ThreadArguments;
-
-
-atomic_bool g_interrupt_received = false;
-
-int log_file_fd = STDERR_FILENO; // default logFile Descriptor
 
 void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
     while ( client_buffer->current_index < client_buffer->length ) {
@@ -261,7 +256,7 @@ void *WorkerRequest( void *arg ) {
         close(client_fd);
     }
     ++( thread_arg->status_of_threads->num_of_threads_finished );
-    
+
     free( thread_arg );
     DeleteBuffer( &client_buffer );
     DeleteRequest( &request );
