@@ -359,8 +359,10 @@ void UnlockFile( FileLocks *file_lock, FileLink *file_link_ptr ) {
         QueuePush( file_lock->free_indicies_queue, index );
 
         ListRemoveLink( file_lock->used_index_list,  file_link_ptr );
-
-        pthread_cond_signal( &( file_lock->queue_not_empty_cond ) );
+        
+        if ( QueueLenghth( file_lock->free_indicies_queue ) == 1 ) {
+            pthread_cond_signal( &( file_lock->queue_not_empty_cond ) );
+        }
     }
 
     pthread_mutex_unlock( &( file_lock->key ) );  
