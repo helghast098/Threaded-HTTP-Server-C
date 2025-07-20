@@ -31,7 +31,7 @@ void DeleteFileLocks( FileLocks **file_locks_ptr );
  * @param file_locks :lock of the files
  * @param file_name :name of file. MUST BE NULL TERMINATED
  * @param action :WRITE, READ. Option NONE will give error
- * @return none
+ * @return FileLink
  */
 FileLink LockFile( FileLocks *file_locks, const char *file_name, Action action );
 
