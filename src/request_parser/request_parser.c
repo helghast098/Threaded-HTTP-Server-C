@@ -99,7 +99,6 @@ int GetMethod( Request *request ) {
     }
     else {
         request->type = NOT_VALID;
-        return -1;
     }
     return 0;
 }
@@ -225,7 +224,6 @@ void DeleteRequest( Request **req ) {
     free( *req );
     *req = NULL;
 }
-
 
 int RequestChecker( Request *request) {
     RequestCheckerState state = STATE_CHECK_METHOD;
