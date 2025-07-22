@@ -33,28 +33,8 @@ typedef enum { OK_, CREATED_, BAD_REQUEST_, FORBIDDEN_, NOT_FOUND_, ISE_, NOT_IM
 *   @return 0 for success -1 for failure
 */
 
-int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks );
 
-/** @brief Does the put request for the client
-*   @param request: info of the request
-*   @param client_buffer: client buffer which client_fd writes to
-*   @param client_fd: The file descriptor for the client
-*   @param log_fd: server log file descriptor
-*   @param interrupt_received: Checks if server received shutdown command
-*   @param file_locks: file locks to the files used in server
-*   @return 0 for success -1 for failure
-*/
-int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks );
-
-/** @brief Does the put request for the client
-*   @param request: info of the request
-*   @param client_buffer: client buffer which client_fd writes to
-*   @param client_fd: The file descriptor for the client
-*   @param log_fd: server log file descriptor
-*   @param interrupt_received: Checks if server received shutdown command
-*   @param file_locks: file locks to the files used in server
-*   @return 0 for success -1 for failure
-*/
+int ExecuteRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks  );
 
 void LogFilePrint(long int reqNum, int logFD, int statusCode, char *file, char *method);
 

@@ -148,7 +148,6 @@ int OpenFile( Request *request, int client_fd, int *fd, struct stat *file_stats,
     }
 }
 
-// Function Definitions
 int PutRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
     // temp file name and creation
     char temp_file[] = "TEMPFILE-XXXXXX";
@@ -238,6 +237,27 @@ int HeadOrGetRequest( Request *request , Buffer *client_buffer, int client_fd, i
     UnlockFile( file_locks, &acquired_file_lock );
     LogFilePrint( request->headers.request_id, log_fd, 200, request->file, method );
     return 0;
+}
+
+// Main Function Definitions
+
+int ExecuteRequest( Request *request, Buffer *client_buffer, int client_fd, int log_fd, atomic_bool *interrupt_received, FileLocks *file_locks ) {
+    int status = 0;
+    switch( request->type ) {
+        case HEAD:
+        case GET:
+            status = HeadOrGetRequest( request, client_buffer, client_fd, log_fd, interrupt_received, file_locks );
+        break;
+
+        case PUT:
+            status = PutRequest( request, client_buffer, client_fd, log_fd, interrupt_received, file_locks );
+        break;
+
+        default:
+            status = -1;
+            StatusPrint( client_fd, NOT_IMP_ );
+    }
+    return status;
 }
 
 void LogFilePrint( long int request_num, int log_fd, int status_code, char *file, char *method ) {
