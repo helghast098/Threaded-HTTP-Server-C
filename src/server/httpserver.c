@@ -362,7 +362,7 @@ int main(int argc, char *argv[]) {
     while ( queue_size( client_queue ) != 0 ) {
         void *garbage_val;
         QueuePop( client_queue , &garbage_val );
-        free( garbge_val );
+        free( garbage_val );
     }
 
     QueueDelete( &client_queeu );
