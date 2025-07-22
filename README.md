@@ -10,39 +10,36 @@ The repository has the following file structure:
 ├── Simple-MultiThreaded-C-Server
 │   │
 │   ├── include # Header files
-│   │   ├── Bind  # C files to create a socket the server listens to.
+│   │   ├── bind  # C files to create a socket the server listens to.
 │   │   │   └── bind.h
 │   │   │
-│   │   ├── HTTP-Methods  # C files where HTTP Methods (GET, HEAD, PUT) are processed, printing to server log file occurs, and locking and releasing of file locks happens.
+│   │   ├── http_methods  # C files where HTTP Methods (GET, HEAD, PUT) are processed, printing to server log file occurs, and locking and releasing of file locks happens.
 │   │   │   └── http_methods.h
 │   │   │
-│   │   ├── HTTP-Server  # Main:  File initializes threads, parses command arguments, initializes locks for files, and a global var for when exit signal is received.
-│   │   │   └── httpserver.h
-│   │   │
-│   │   ├── Queue  # C files for a thread-safe queue that houses client file descriptors
+│   │   ├── queue  # C files for a thread-safe queue that houses client file descriptors
 │   │   │   └── queue.h
 │   │   │
-│   │   └── Request-Parser  # C files for parsing requests from clients
+│   │   └── request_parser  # C files for parsing requests from clients
 │   │       └── request_parser.h
 │   │  
 │   ├── src # Source files
-│   │   ├── Bind  # C files to create a socket the server listens to.
+│   │   ├── bind # C files to create a socket the server listens to.
 │   │   │   ├── bind.c
 │   │   │   └── CMakeLists.txt
 │   │   │
-│   │   ├── HTTP-Methods  # C files where HTTP Methods (GET, HEAD, PUT) are processed, printing to server log file occurs, and locking and releasing of file locks happens.
+│   │   ├── http_methods  # C files where HTTP Methods (GET, HEAD, PUT) are processed, printing to server log file occurs, and locking and releasing of file locks happens.
 │   │   │   ├── CMakeLists.txt
 │   │   │   └── http_methods.c
 │   │   │
-│   │   ├── HTTP-Server  # Main:  File initializes threads, parses command arguments, initializes locks for files, and a global var for when exit signal is received.
+│   │   ├── server  # Main:  File initializes threads, parses command arguments, initializes locks for files, and a global var for when exit signal is received.
 │   │   │   ├── CMakeLists.txt
-│   │   │   └── httpserver.c
+│   │   │   └── server.c
 │   │   │
-│   │   ├── Queue  # C files for a thread-safe queue that houses client file descriptors
+│   │   ├── queue  # C files for a thread-safe queue that houses client file descriptors
 │   │   │   ├── CMakeLists.txt
 │   │   │   └── queue.c
 │   │   │
-│   │   ├── Request-Parser  # C files for parsing requests from clients
+│   │   ├── request_parser  # C files for parsing requests from clients
 │   │   │   ├── CMakeLists.txt
 │   │   │   └── request_parser.c
 │   │   │
