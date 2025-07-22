@@ -179,8 +179,6 @@ void *WorkerRequest( void *arg ) {
         int client_fd;
 
         // reseting variables
-        client_closed = false;
-
         request->request_string->length = 0;
         request->request_string->current_index = 0;
         request->current_state = INITIAL_STATE;
