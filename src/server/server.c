@@ -9,7 +9,6 @@
 #include "bind/bind.h"
 #include "file_lock/file_lock.h"
 #include "http_methods/http_methods.h"
-#include "server/httpserver.h"
 #include "queue/queue.h"
 #include "request_parser/request_parser.h"
 
@@ -29,6 +28,11 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+#define REQUEST_BUFFER_SIZE 2000
+#define CLIENT_BUFFER_SIZE 10000
+#define LOG_FILE_NAME_LENGTH 1000
+#define NUMBER_OF_THREADS 4
+
 int log_file_fd = STDERR_FILENO; // default logFile Descriptor
 
 atomic_bool g_interrupt_received = false;
@@ -44,7 +48,7 @@ typedef struct ThreadsFinished {
 } ThreadsFinished;
 
 typedef struct ThreadArguments {
-    FileLocks *const file_locks;
+    FileLocks *file_locks;
     ThreadsFinished *status_of_threads;
     Queue *client_queue;
 } ThreadArguments;
@@ -52,12 +56,12 @@ typedef struct ThreadArguments {
 void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
     while ( client_buffer->current_index < client_buffer->length ) {
 
-        char c = client_buffer.data[ client_buffer->current_index ];
+        char c = client_buffer->data[ client_buffer->current_index ];
         ++( client_buffer->current_index );
 
-        request->buffer.data[ request->buffer.current_index ] = c;
-        ++( request->buffer.current_index );
-        ++( request->buffer.length );
+        request->request_string->data[ request->request_string->current_index ] = c;
+        ++( request->request_string->current_index );
+        ++( request->request_string->length );
 
         switch ( request->current_state ) {
             case INITIAL_STATE:
@@ -84,13 +88,13 @@ void AppendingClientBufferToRequest( Request *request, Buffer *client_buffer ) {
                 }
             break;
 
-            default;
+            default:
         }
 
     }
 }
 
-void ListenForClients( Queue *client_queue ) {
+void ListenForClients( int socket_fd, Queue *client_queue ) {
     while ( !g_interrupt_received ) {
         int *client_fd = malloc( sizeof(int) );
         *( client_fd ) = accept( socket_fd, NULL, NULL ); // waiting for connections
@@ -167,9 +171,9 @@ void *WorkerRequest( void *arg ) {
 
     Buffer *client_buffer = CreateBuffer( CLIENT_BUFFER_SIZE );
 
-    Request * request = CreateRequest( REQUEST_BUFFER_SIZE, FILE_NAME_LENGTH );
+    Request *request = CreateRequest( REQUEST_BUFFER_SIZE, FILE_NAME_LENGTH );
 
-    while ( !ev_interrupt_received ) {
+    while ( !g_interrupt_received ) {
         bool client_closed = false;
         void *client_temp = NULL;
         int client_fd;
@@ -177,13 +181,13 @@ void *WorkerRequest( void *arg ) {
         // reseting variables
         client_closed = false;
 
-        request.buffer.length = 0;
-        request.current_index = 0;
-        request.current_state = INITIAL_STATE;
-        request.type = NOT_VALID;
-        request.headers.content_length = -1;
-        request.headers.request_id = -1;
-        request.headers.expect = false;
+        request->request_string->length = 0;
+        request->request_string->current_index = 0;
+        request->current_state = INITIAL_STATE;
+        request->type = NOT_VALID;
+        request->headers.content_length = -1;
+        request->headers.request_id = -1;
+        request->headers.expect = false;
 
         if ( !QueuePop(  thread_arg->client_queue , &client_temp ) ) {
             break;
@@ -195,8 +199,8 @@ void *WorkerRequest( void *arg ) {
         // need to set client to nonblocking
         fcntl( client_fd, F_SETFL, O_NONBLOCK );
 
-        while ( !g_interrupt_received && ( request.current_state != REQUEST_COMPLETE ) ) {
-            int client_bytes_read = read( client_fd, client_buffer.data, client_buffer.max_size );
+        while ( !g_interrupt_received && ( request->current_state != REQUEST_COMPLETE ) ) {
+            int client_bytes_read = read( client_fd, client_buffer->data, client_buffer->max_size );
 
             if ( client_bytes_read < 0 ) {
                 continue;
@@ -206,9 +210,9 @@ void *WorkerRequest( void *arg ) {
                 break;
             }
             else {
-                client_buffer.length = client_bytes_read;
-                client_buffer.current_index = 0;
-                AppendingClientBufferToRequest( &request, &client_buffer );
+                client_buffer->length = client_bytes_read;
+                client_buffer->current_index = 0;
+                AppendingClientBufferToRequest( request, client_buffer );
             }
         }
 
@@ -221,31 +225,31 @@ void *WorkerRequest( void *arg ) {
 
             // CHECKING FORMAT OF REQUEST
             // Checking Request
-            if ( RequestChecker( &request ) != 0 ) {
+            if ( RequestChecker( request ) != 0 ) {
                 StatusPrint( client_fd, BAD_REQUEST_ );
                 close( client_fd );
                 continue;
             }
 
             // Checking headerfields
-            if ( HeaderFieldChecker( &request ) != 0 ) {
+            if ( HeaderFieldChecker( request ) != 0 ) {
                 StatusPrint( client_fd, BAD_REQUEST_ );
                 close( client_fd );
                 continue;
             }
 
             // CHOOSING METHOD
-            switch ( request.type ) {
+            switch ( request->type ) {
                 case HEAD:
-                    HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                    HeadOrGetRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
                 case GET:
-                    HeadOrGetRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                    HeadOrGetRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
                 case PUT:
-                    PUTRequest( &request, &client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
+                    PutRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
                 break;
 
                 default:
@@ -268,25 +272,22 @@ int main(int argc, char *argv[]) {
     // SETTING UP INTERRUPT STRUCT
     struct sigaction interrupt_signal;
     memset( &interrupt_signal, 0, sizeof( interrupt_signal ) );
-    interrup_signal.sa_handler = SignalInterrupt;
+    interrupt_signal.sa_handler = SignalInterrupt;
     sigaction( SIGTERM, &interrupt_signal, NULL );
 
     //FLAGS FOR OPTIONAL ARGUMENTS
     bool l_flag = false;
     bool t_flag = false;
-    int number_of_threads = 4;
+    int number_of_threads = NUMBER_OF_THREADS;
 
     // IF THERE ARE NO ARGUMENTS
     if (argc < 2) {
         warnx("Too few arguments:\nusage: ./httpserver [-t threads] [-l logfile] <port>");
         exit(1);
     }
-
     // CHECKING OPTIONAL ARGUMENTS
+    char log_file[ LOG_FILE_NAME_LENGTH ];
     OptionalArgumentChecker( &l_flag, &t_flag, argc, argv, &number_of_threads, log_file );
-
-    // OPENING LOG FILE
-    char log_file[ 1000 ];
 
     if ( l_flag ) {
         if ( access( log_file, F_OK ) == 0 ) {
@@ -315,7 +316,7 @@ int main(int argc, char *argv[]) {
     }
 
     uint16_t port_num = StrToPort( argv[ optind ] );
-    int socket_fd = create_listen_socket( port_num );
+    int socket_fd = CreateSocket( port_num );
 
     if ( socket_fd < 0 ) {
         warnx( "bind: %s", strerror( errno ) );
@@ -323,21 +324,22 @@ int main(int argc, char *argv[]) {
     }
 
     // INITIALIZING QUEUE FOR REQUESTS
-    Queue *client_queue; = QueueNew( number_of_threads );
+    Queue *client_queue = QueueNew( number_of_threads );
 
     // INITIALIZING FILE LOCKS
     FileLocks *file_locks = CreateFileLocks( number_of_threads );
 
     // SETTING UP THREADS
-    ThreadsFinished status_of_threads;
-    status_of_threads.num_of_threads = number_of_threads;
-    status_of_threads.num_of_threads_finished = 0;
+    ThreadsFinished status_of_threads = {
+        .num_of_threads = number_of_threads,
+        .num_of_threads_finished= 0
+    };
 
     pthread_t worker_threads[ number_of_threads ];
 
     for ( int i = 0; i < number_of_threads; ++i ) {
         ThreadArguments *thread_arg = malloc( sizeof( ThreadArguments ) );
-        thread_arg->status_of_threads = &file_locks;
+        thread_arg->file_locks = file_locks;
         thread_arg->status_of_threads = &status_of_threads;
         thread_arg->client_queue = client_queue;
 
@@ -345,7 +347,7 @@ int main(int argc, char *argv[]) {
     }
 
     // ACQUIRING CLIENTS
-    ListenForClients( client_queue );
+    ListenForClients( socket_fd, client_queue );
 
     // SHUTDOWN SERVER
     QueueShutDown( client_queue );
@@ -359,13 +361,13 @@ int main(int argc, char *argv[]) {
     }
 
     // Removing queue structs present
-    while ( queue_size( client_queue ) != 0 ) {
+    while ( QueueLength( client_queue ) != 0 ) {
         void *garbage_val;
         QueuePop( client_queue , &garbage_val );
         free( garbage_val );
     }
 
-    QueueDelete( &client_queeu );
+    QueueDelete( &client_queue );
     DeleteFileLocks( &file_locks );
 
     fsync( log_file_fd ); //** Freeing memory for URI lock
