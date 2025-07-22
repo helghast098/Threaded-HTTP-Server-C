@@ -238,23 +238,7 @@ void *WorkerRequest( void *arg ) {
                 continue;
             }
 
-            // CHOOSING METHOD
-            switch ( request->type ) {
-                case HEAD:
-                    HeadOrGetRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
-                break;
-
-                case GET:
-                    HeadOrGetRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
-                break;
-
-                case PUT:
-                    PutRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
-                break;
-
-                default:
-                    StatusPrint( client_fd, NOT_IMP_ );
-            }
+            ExecuteRequest( request, client_buffer, client_fd, log_file_fd, &g_interrupt_received, thread_arg->file_locks );
         }
         /*Resetting all variables to original values*/
         close(client_fd);
