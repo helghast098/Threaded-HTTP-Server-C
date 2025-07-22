@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <semaphore.h>
 
-#define MAX_PUT_MESSAGE_BUFF 10000
 #define MAX_GET_MESSAGE_BUFFER 4096
 
 
