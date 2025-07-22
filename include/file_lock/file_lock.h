@@ -1,3 +1,6 @@
+#ifndef FILE_LOCK_H
+#define FILE_LOCK_H
+
 #include <stdlib.h>
 
 #define FILE_NAME_SIZE 1000 // Including null
@@ -42,3 +45,4 @@ FileLink LockFile( FileLocks *file_locks, const char *file_name, Action action )
  * @return none 
  */
 void UnlockFile( FileLocks *file_locks, FileLink *file_link_ptr );
+#endif
