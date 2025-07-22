@@ -25,5 +25,5 @@ int CreateSocket( uint16_t port );
 *   @return  > 0 on success
 *            =< 0 on failure
 */
-uint16_t StrToPort( char *port );
+int32_t StrToPort( char *port );
 #endif

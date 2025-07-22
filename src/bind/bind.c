@@ -5,10 +5,13 @@
  */
 
 /*Included Libraries*/
-#include "Bind/bind.h"
+#include "bind/bind.h"
+
+#include <stdlib.h>
 #include <signal.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <err.h>
 #include <stdio.h>
 /*Function Definitions*/
 
@@ -50,7 +53,7 @@ int32_t StrToPort( char *port ) {
     for ( unsigned int i = 0; port[ i ] != '\0'; ++i ) {
         if ( port[ i ] < '0' || port[ i ] > '9' ) {
             warnx( "invalid port number: %s", port );
-            return -1
+            return -1;
         }
     }
 
