@@ -209,7 +209,7 @@ Request *CreateRequest( size_t request_length, size_t file_name_length ) {
         return NULL;
     }
 
-    req->file = malloc( sizeof( char ) * ( file_name_length + 1 )+- );
+    req->file = malloc( sizeof( char ) * ( file_name_length + 1 ) );
     if ( req->file == NULL ) {
         DeleteBuffer( &( req->request_string ) );
         free( req );
